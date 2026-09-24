@@ -43,9 +43,14 @@ _console = Console()
 def apply_reuse_params(settings: BenchSettings, previous: BenchResult | None, *,
                        endpoint: str | None, temperature: float | None,
                        thinking: bool) -> bool:
-    """Fill endpoint/temperature/thinking from ``previous.meta`` when the
-    matching CLI flag wasn't passed explicitly (``previous`` is None unless
+    """Fill temperature/thinking from ``previous.meta`` when the matching CLI
+    flag wasn't passed explicitly (``previous`` is None unless
     ``--reuse-params`` was given).
+
+    The endpoint is never adopted. It is not part of a run's identity (see
+    ``runner._config_matches``), and a recorded address is exactly the thing
+    that goes stale: adopting it pointed a top-up at a server that had moved.
+    It comes from ``--endpoint`` or the environment like any other run.
 
     Returns True when the previous run's ``max_tokens`` override was adopted,
     which the caller must pass on as ``max_tokens_explicit``.
@@ -63,8 +68,6 @@ def apply_reuse_params(settings: BenchSettings, previous: BenchResult | None, *,
     """
     if endpoint:
         settings.endpoint = endpoint
-    elif previous is not None:
-        settings.endpoint = previous.meta.endpoint
     if temperature is not None:
         settings.temperature = temperature
     elif previous is not None:
@@ -148,14 +151,14 @@ def run(
     only_new: bool = typer.Option(False, "--only-new",
                                   help="Reuse already-recorded trials from the "
                                        "output file for tasks whose content and "
-                                       "run config (model/endpoint/temperature/"
+                                       "run config (model/temperature/"
                                        "max_tokens/thinking) are unchanged; only "
                                        "run what's missing. Pair with "
                                        "--reuse-params so you don't have to "
-                                       "restate the original endpoint/temperature/"
+                                       "restate the original temperature/"
                                        "thinking by hand."),
     reuse_params: bool = typer.Option(False, "--reuse-params",
-                                      help="Adopt endpoint/temperature/thinking "
+                                      help="Adopt temperature/thinking "
                                            "from the existing output file's "
                                            "recorded config for any of those not "
                                            "passed explicitly here, plus a "

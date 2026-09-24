@@ -5,16 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 _REPO_ROOT = Path(__file__).parent.parent
-
-# `results/` is gitignored: the stored fleet exists on the maintainer's machine,
-# not in a clone or on CI. A test about that fleet must skip without it rather
-# than pass vacuously over an empty board.
-needs_stored_results = pytest.mark.skipif(
-    not any((_REPO_ROOT / "results").glob("*_raw_results*.json")),
-    reason="needs the local result files in results/, which are not in the repo")
 
 from small_llm_bench.analysis import pairwise_separability
 from small_llm_bench.leaderboard import (assign_size_bucket, assign_tier,
@@ -70,8 +61,10 @@ def test_row_flags_incomplete_judge_coverage(tmp_path):
 
 
 def test_row_flags_run_setting_mismatches(tmp_path):
-    """Task-bank and endpoint divergences are what make two rows unrankable
-    against each other, so each is named on the offending row."""
+    """A task-bank divergence makes two rows unrankable against each other, so
+    it is named on the offending row. A different endpoint does not: it is
+    where the server was, and flagging it marked every row a user added to the
+    shipped reference panel."""
     _write(tmp_path, _bench("a"), judged=False)
     _write(tmp_path, _bench("b"), judged=False)
     _write(tmp_path, _bench("other_bank", task_hash="zzz"), judged=False)
@@ -83,8 +76,8 @@ def test_row_flags_run_setting_mismatches(tmp_path):
     assert rows["a"]["comparability_mismatch"] == []
     assert rows["b"]["comparability_mismatch"] == []
     assert rows["other_bank"]["comparability_mismatch"] == ["task_set_hash"]
-    assert rows["other_host"]["comparability_mismatch"] == ["endpoint"]
-    assert data["comparability"]["modal"]["endpoint"] == "http://gpu:8092/v1"
+    assert rows["other_host"]["comparability_mismatch"] == []
+    assert "endpoint" not in data["comparability"]["modal"]
 
 
 def test_comparability_skipped_for_a_single_row(tmp_path):
@@ -321,16 +314,6 @@ def test_an_unregistered_model_has_no_bucket_rather_than_the_smallest():
     assert assign_size_bucket(None) is None
 
 
-@needs_stored_results
-def test_every_model_on_the_shipped_board_resolves_to_a_size():
-    """Nine of 21 rows rendered `?` until the registry was filled from model
-    cards. This is the guard against that returning."""
-    data = build_leaderboard(_REPO_ROOT / "results", scheme="module")
-    missing = [r["model"] for r in data["rows"] if r["size"]["label"] == "?"]
-    assert missing == []
-    assert all(r["size"]["bucket"] is not None for r in data["rows"])
-
-
 def test_ornith_is_a_sparse_model_not_a_dense_35b(tmp_path):
     """Recorded as dense 35B until 2026-09-19, which put it top of the params
     column and made an A-tier score read as a large model underperforming
@@ -380,3 +363,16 @@ def test_the_params_column_sorts_on_a_dotted_key(tmp_path):
     html = render_leaderboard_html(build_leaderboard(tmp_path))
     assert 'key: "size.sort_b"' in html
     assert 'key.split(".").reduce(' in html
+
+
+def test_a_judged_file_without_its_raw_sibling_is_a_full_row(tmp_path):
+    """The shipped reference panel is judged files only. A judged file holds
+    everything its raw one does, so the board must read it rather than start
+    from raw files and render nothing."""
+    stem = "judged-only_raw_results"
+    (tmp_path / f"{stem}_judged.json").write_text(
+        json.dumps(_bench("judged-only").model_dump()))
+    _write(tmp_path, _bench("both", judged_modules={"code"}), judged=True)
+    _write(tmp_path, _bench("raw-only"), judged=False)
+    models = sorted(r["model"] for r in build_leaderboard(tmp_path)["rows"])
+    assert models == ["both", "judged-only", "raw-only"]

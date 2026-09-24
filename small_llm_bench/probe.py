@@ -141,9 +141,9 @@ async def _run_one_model(model: str, *, module: str, task_id: str,
     if add is not None and previous is None:
         add = None  # nothing to top up; fall back to a normal run
     if previous is not None:
-        # Inherit endpoint/temperature/thinking so add_trials' config check
-        # passes, the same way --reuse-params does for `run`.
-        settings.endpoint = previous.meta.endpoint
+        # Inherit temperature/thinking so add_trials' config check passes, the
+        # same way --reuse-params does for `run`. Not the endpoint: it is not
+        # part of the check, and a recorded address may no longer answer.
         settings.temperature = previous.meta.temperature
         if previous.meta.thinking is not None:
             settings.thinking = previous.meta.thinking

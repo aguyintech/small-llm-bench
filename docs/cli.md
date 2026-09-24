@@ -66,10 +66,14 @@ sllmb run [OPTIONS]
 |---|---|---|
 | `--resume` / `--no-resume` | on | Recover trials from `<output>.partial.jsonl`, the checkpoint an interrupted run leaves behind. Only trials from an identically configured run are recovered. |
 | `--only-new` | off | Reuse trials already in the output file whose task content and run config are unchanged; run only what is missing. |
-| `--reuse-params` | off | Adopt endpoint, temperature, thinking and any recorded `--max-tokens` override from the existing file, for options not given on the command line. |
+| `--reuse-params` | off | Adopt temperature, thinking and any recorded `--max-tokens` override from the existing file, for options not given on the command line. The endpoint is never adopted; it comes from `--endpoint` or `BENCH_ENDPOINT`. |
 | `--ignore-task-hash` | off | Match old trials by `(module, task_id)` only, so only truncated, infra-errored or missing trials re-run. Pair with `--add-trials` after a cap change. |
 | `--ignore-world-hash` | off | Reuse trials recorded against a different version of the simulated tool world. Only when you know the change cannot affect those tasks. |
 | `--add-trials N` | — | Add N more trials per task on top of the file (3 + 2 = 5). Errors on a config mismatch instead of running fresh. |
+
+The endpoint is not part of a run's identity. If your server's address
+changes, resuming, `--only-new` and `--add-trials` keep reusing the trials it
+already produced; the new address is simply recorded on the next run.
 
 **Code sandbox and deployment checks**
 
@@ -211,8 +215,8 @@ sllmb compare results/qwen3_8b_raw_results.json results/llama3.1_8b_raw_results.
 
 Builds one self-contained HTML page over every saved result in a directory,
 plus a sibling `.json` with the same data. Where a model has both a raw and a
-judged file, the judged one is used. No server, no CDN, no build step: open the
-file.
+judged file, the judged one is used; a judged file on its own is a full row.
+No server, no CDN, no build step: open the file.
 
 ```
 sllmb leaderboard [OPTIONS]
@@ -250,13 +254,13 @@ Things the page flags rather than hides:
   cells fall back to the deterministic score.
 - **`comparability_mismatch`** (in the JSON and the card) — this row's run
   settings differ from the most common ones: task bank, bench version,
-  endpoint, trials, thinking, token budget, profile, sampler or sandbox. A
+  trials, thinking, token budget, profile, sampler or sandbox. A
   served context window too small for the bank is flagged too; a different
   window that still fits is not.
 
 ```bash
 sllmb leaderboard --open
-sllmb leaderboard --results-dir results/reference --output board.html
+sllmb leaderboard --results-dir results/reference --open     # the shipped fleet
 ```
 
 ---

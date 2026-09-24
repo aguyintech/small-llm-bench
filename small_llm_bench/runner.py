@@ -59,8 +59,12 @@ def _checkpoint_fingerprint(settings: BenchSettings, profile: str,
     The same fields `_config_matches` guards for `--only-new`, plus the profile
     and seed. A recovered trial is a trial like any other: it may only rejoin a
     run that would have produced it.
+
+    The endpoint is deliberately absent, as it is from `_config_matches`: it
+    says where the server was, not how the model was run, and a server whose
+    address changed mid-sweep must not throw away the trials it already served.
     """
-    return {"model": settings.model, "endpoint": settings.endpoint,
+    return {"model": settings.model,
             "profile": profile, "thinking": settings.thinking,
             "temperature": temperature, "seed": base_seed,
             "max_tokens": settings.max_tokens,
@@ -153,7 +157,11 @@ def load_checkpoint(path: Path,
         header = json.loads(lines[0])
     except ValueError:
         return []
-    if header.get("__checkpoint__") != fingerprint:
+    stored = header.get("__checkpoint__")
+    if isinstance(stored, dict):
+        # Sidecars written by 1.0.0 fingerprinted the endpoint too.
+        stored = {k: v for k, v in stored.items() if k != "endpoint"}
+    if stored != fingerprint:
         return []
     recovered = []
     for line in lines[1:]:
@@ -608,7 +616,7 @@ def _config_matches(meta: BenchMeta, settings: BenchSettings,
     temp_matches = (meta.temperature is None and settings.temperature is None) or (
         meta.temperature is not None and settings.temperature is not None
         and abs(meta.temperature - settings.temperature) < 1e-9)
-    return (meta.model == settings.model and meta.endpoint == settings.endpoint
+    return (meta.model == settings.model
             and meta.thinking == settings.thinking and temp_matches
             and meta.max_tokens is not None
             and meta.max_tokens <= settings.max_tokens)
@@ -889,8 +897,9 @@ async def run_bench(settings: BenchSettings, profile: str = "full",
 
     When ``only_new`` and ``previous`` are given, already-recorded trials for a
     task are reused (and not re-executed) when the task's content is unchanged
-    and ``previous.meta``'s model/endpoint/temperature/max_tokens/thinking
-    match this run's config. Infra-errored trials are never counted as done.
+    and ``previous.meta``'s model/temperature/max_tokens/thinking match this
+    run's config. The endpoint is not part of that: it records where the
+    server was, and an address that changed says nothing about the model. Infra-errored trials are never counted as done.
 
     ``ignore_task_hash`` skips that content-hash requirement, trusting
     ``(module, task_id)`` identity alone — useful both for retrying only
@@ -926,7 +935,7 @@ async def run_bench(settings: BenchSettings, profile: str = "full",
         if not _config_matches(previous.meta, settings, max_tokens_explicit):
             raise ValueError(
                 "--add-trials: previous results were run with a different "
-                "(or untracked) model/endpoint/temperature/max_tokens/"
+                "(or untracked) model/temperature/max_tokens/"
                 "thinking config — refusing to blend trials from mismatched "
                 "configs. Match the original run's config (--reuse-params "
                 "can help) or start a fresh file instead.")
@@ -940,7 +949,7 @@ async def run_bench(settings: BenchSettings, profile: str = "full",
                                             max_tokens_explicit):
             console.print("[yellow]--only-new/--ignore-task-hash: previous "
                           "results were run with a different (or untracked) "
-                          "model/endpoint/temperature/max_tokens/thinking "
+                          "model/temperature/max_tokens/thinking "
                           "config — running fresh.[/]")
             reusable = False
 

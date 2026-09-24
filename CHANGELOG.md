@@ -11,6 +11,41 @@ the task bank or a scoring rule. Use `sllmb migrate` and `sllmb rescore` to
 bring an old results file forward where the change allows it, and re-run where
 it does not.
 
+## [Unreleased]
+
+No scoring rule changed, so results from 1.0.0 stay comparable.
+
+### Added
+
+- **The reference fleet ships.** `results/reference/` holds the 23 judged
+  runs the board and the README's numbers are computed from, with the server
+  address redacted. `sllmb leaderboard --results-dir results/reference --open`
+  shows the board with nothing to run.
+- **CI guards the published numbers.** The tests re-score the shipped panel
+  and fail if any verdict or det score would change, if a stored trial no
+  longer matches the task bank, if a model on it has no registry size, or if a
+  private address appears in it.
+
+### Changed
+
+- **The endpoint is no longer part of a run's identity.** A server whose
+  address changed used to invalidate everything it had already produced:
+  `--only-new`, `--add-trials` and crash recovery all refused the old trials,
+  and every row a user added to the reference panel was flagged as
+  mismatched. The endpoint is still recorded, but no longer matched or
+  flagged, and `--reuse-params` no longer copies an old address back in.
+  Checkpoints written by 1.0.0 still resume.
+- `qwen3.6-27b-thinking-cap` is registered as a fine-tune of `qwen3.6-27b`,
+  not a serving variant of it, so it now takes part in the size-inversion
+  check like any other model.
+
+### Fixed
+
+- `leaderboard` skipped a judged file with no raw file beside it, which
+  rendered the judged-only reference panel as an empty board.
+- Leaderboard tests no longer depend on the untracked `results/` directory;
+  on CI one of them failed and four passed over an empty board.
+
 ## [1.0.0] — 2026-09-24
 
 First public release: 39 tasks over 7 modules, a 23-model reference fleet, and

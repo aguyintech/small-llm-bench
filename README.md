@@ -112,20 +112,28 @@ rather than model names. Mixture-of-experts models show total and active
 parameters and are compared by active parameters. Adding your model is a
 one-line change.
 
-### Placing a model against the reference fleet
+### The reference fleet
 
-Run it with the same settings the fleet used and build the board over both.
-Details in [results/reference/README.md](results/reference/README.md).
+The 23 models on the board ship in [`results/reference/`](results/reference/),
+every trial of every task, judged. See the board without running anything:
+
+```bash
+sllmb leaderboard --results-dir results/reference --open
+```
+
+To place your own model among them, run it with the same settings the fleet
+used and rebuild the board:
 
 ```bash
 sllmb run --model <name> --trials 3 --thinking --concurrency 1 \
     --output results/reference/<name>_raw_results.json
 sllmb judge --results results/reference/<name>_raw_results.json
-sllmb leaderboard --results-dir results/reference
+sllmb leaderboard --results-dir results/reference --open
 ```
 
 Any row whose settings differ from the rest is flagged, so a mismatched run
-cannot slip into the comparison unnoticed.
+cannot slip into the comparison unnoticed. Details, and exactly what "same
+settings" means, in [results/reference/README.md](results/reference/README.md).
 
 ## How scoring works
 
@@ -150,7 +158,7 @@ read a scorecard, is in the [methodology](docs/methodology.md).
 
 A sorted table always looks more decisive than its evidence, so:
 
-- **It resolves tiers, not ranks.** On the 23-model reference fleet, 76 of 253
+- **It resolves tiers, not ranks.** On the 23-model reference fleet, 77 of 253
   model pairs are statistically separable, and none of the 22 adjacent pairs
   are. A one-place difference is not a finding. `sllmb items` prints the
   intervals and the pairwise test for exactly this reason.
@@ -170,7 +178,8 @@ A sorted table always looks more decisive than its evidence, so:
   server, and the reference numbers were taken at concurrency 1.
 
 What it is good for: telling you quickly whether a new small model is in the
-same class as the one you already run, or clearly below it.
+same class as the one you already run, or clearly below it, and whether a
+fine-tune has moved away from the base model it came from.
 
 ## Documentation
 

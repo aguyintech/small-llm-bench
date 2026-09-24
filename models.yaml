@@ -153,13 +153,16 @@ models:
       score read as a large model underperforming rather than a 3B-active
       MoE holding A tier. Same error class as the Ling-3.0-Tiny fix."
 
-  # --- serving variants: same weights, different configuration --------------
   - name: qwen3.6-27b-thinking-cap
     params_b: 27
     family: qwen
-    variant_of: qwen3.6-27b
-    notes: "Reasoning budget capped externally. Not an independent model."
+    notes: "Dense, fine-tuned from Qwen3.6-27B. Its own weights, not a serving
+      configuration of the base: comparing a fine-tune against its base model
+      is one of the questions the board exists to answer. Recorded here as a
+      variant_of qwen3.6-27b in 1.0.0, which kept it out of the
+      size-inversion check."
 
+  # --- serving variants: same weights, different configuration --------------
   - name: qwen3.8-27b-v2
     params_b: 27
     family: qwen

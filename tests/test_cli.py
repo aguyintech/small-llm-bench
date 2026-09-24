@@ -25,7 +25,9 @@ def test_reuse_params_none_leaves_settings_untouched():
 def test_reuse_params_adopts_previous_config_when_not_passed():
     settings = BenchSettings(endpoint="http://default/v1")
     apply_reuse_params(settings, _previous(), endpoint=None, temperature=None, thinking=False)
-    assert settings.endpoint == "http://old/v1"
+    # Never the recorded endpoint: it is where the server WAS, and adopting it
+    # pointed a top-up at an address that had since moved.
+    assert settings.endpoint == "http://default/v1"
     assert settings.temperature == 0.3
     assert settings.thinking is True
 
@@ -137,3 +139,16 @@ def test_judge_command_exits_2_on_incomplete_coverage(tmp_path, monkeypatch):
     allowed = runner.invoke(cli_module.app,
                             ["judge", "--results", str(raw), "--allow-partial"])
     assert allowed.exit_code == 0
+
+
+def test_a_changed_endpoint_does_not_invalidate_stored_trials():
+    """The server's address is not part of a run's identity. A server that
+    moved from one IP to another serves the same model the same way, and
+    --only-new / --add-trials must keep reusing what it already produced."""
+    from small_llm_bench.runner import _config_matches
+
+    previous = _previous(max_tokens=8192)          # recorded at http://old/v1
+    settings = BenchSettings(endpoint="http://new/v1", max_tokens=8192,
+                             temperature=0.3, thinking=True)
+    settings.model = "m"
+    assert _config_matches(previous.meta, settings) is True

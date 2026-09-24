@@ -32,7 +32,7 @@ def _result(task_id: str = "t", **kw) -> TaskResult:
 
 
 def _fingerprint(**over):
-    base = {"model": "m", "endpoint": "http://x/v1", "profile": "full",
+    base = {"model": "m", "profile": "full",
             "thinking": True, "temperature": None, "seed": 0,
             "max_tokens": 8192, "max_tokens_override": False,
             "bench_version": "1.0.0"}
@@ -86,6 +86,28 @@ class TestCheckpointSidecar:
         assert load_checkpoint(path, _fingerprint(max_tokens=16384)) == []
         assert load_checkpoint(path, _fingerprint(model="other")) == []
 
+    def test_a_moved_server_still_recovers_its_trials(self, tmp_path):
+        """The endpoint is where the server was, not how the model ran. A
+        server whose address changed mid-sweep keeps what it already served."""
+        path = tmp_path / "out.partial.jsonl"
+        before = _checkpoint_fingerprint(
+            BenchSettings(model="m", endpoint="http://10.0.0.5/v1"),
+            "full", None, 0, False)
+        after = _checkpoint_fingerprint(
+            BenchSettings(model="m", endpoint="http://10.0.0.9/v1"),
+            "full", None, 0, False)
+        with TrialCheckpoint(path, before) as cp:
+            cp.append(_result("a"))
+        assert len(load_checkpoint(path, after)) == 1
+
+    def test_a_sidecar_written_by_1_0_0_still_recovers(self, tmp_path):
+        """1.0.0 sidecars fingerprinted the endpoint. Dropping it from the
+        fingerprint must not orphan a run that was interrupted before."""
+        path = tmp_path / "out.partial.jsonl"
+        with TrialCheckpoint(path, _fingerprint(endpoint="http://old/v1")) as cp:
+            cp.append(_result("a"))
+        assert len(load_checkpoint(path, _fingerprint())) == 1
+
     def test_missing_empty_and_headerless_files_recover_nothing(self, tmp_path):
         fp = _fingerprint()
         assert load_checkpoint(tmp_path / "nope.jsonl", fp) == []
@@ -119,7 +141,7 @@ class TestCheckpointSidecar:
     def test_fingerprint_covers_every_field_that_makes_trials_blendable(self):
         settings = BenchSettings(model="m", endpoint="http://x/v1")
         fp = _checkpoint_fingerprint(settings, "full", 0.7, 5, True)
-        assert set(fp) == {"model", "endpoint", "profile", "thinking",
+        assert set(fp) == {"model", "profile", "thinking",
                            "temperature", "seed", "max_tokens",
                            "max_tokens_override", "bench_version"}
         assert (fp["temperature"], fp["seed"], fp["max_tokens_override"]) == (

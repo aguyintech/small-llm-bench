@@ -158,7 +158,11 @@ def _judged_sibling(raw_path: Path) -> Path:
 # however identical the bank; and docker/podman run python:3.12-slim while
 # bwrap/sandbox-exec/rlimit run the host interpreter, so a code task can
 # disagree between rows for a reason that is not the model.
-_COMPARABILITY_FIELDS = ["task_set_hash", "bench_version", "endpoint", "trials",
+# `endpoint` left after 1.0.0. It says where a server was, not how the model was
+# run: every settings difference that matters is checked above on its own, and
+# against the shipped reference panel it flagged every row a user added,
+# because nobody else's server has the maintainer's address.
+_COMPARABILITY_FIELDS = ["task_set_hash", "bench_version", "trials",
                          "thinking", "max_tokens", "profile", "sampling",
                          "sandbox_backend"]
 
@@ -232,6 +236,14 @@ def build_leaderboard(results_dir: Path, weights_name: str = "balanced",
         judged_path = _judged_sibling(raw_path)
         source = judged_path if judged_path.exists() else raw_path
         sources.append(source)
+    # A judged file holds everything its raw file does, so one without a raw
+    # sibling is a complete row, not an orphan. The shipped reference panel is
+    # judged files only; skipping them rendered it as an empty board.
+    raw_names = {p.name for p in raw_files}
+    sources += [p for p in find_result_files(results_dir, judged=True)
+                if p.name.replace("_judged.json", ".json") not in raw_names]
+    sources.sort()
+    for source in sources:
         loaded.append((source, load_results(source)))
 
     # One exponent for the whole board. pass^k is not comparable across
