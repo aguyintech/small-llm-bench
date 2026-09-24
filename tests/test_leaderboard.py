@@ -5,7 +5,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 _REPO_ROOT = Path(__file__).parent.parent
+
+# `results/` is gitignored: the stored fleet exists on the maintainer's machine,
+# not in a clone or on CI. A test about that fleet must skip without it rather
+# than pass vacuously over an empty board.
+needs_stored_results = pytest.mark.skipif(
+    not any((_REPO_ROOT / "results").glob("*_raw_results*.json")),
+    reason="needs the local result files in results/, which are not in the repo")
 
 from small_llm_bench.analysis import pairwise_separability
 from small_llm_bench.leaderboard import (assign_size_bucket, assign_tier,
@@ -312,6 +321,7 @@ def test_an_unregistered_model_has_no_bucket_rather_than_the_smallest():
     assert assign_size_bucket(None) is None
 
 
+@needs_stored_results
 def test_every_model_on_the_shipped_board_resolves_to_a_size():
     """Nine of 21 rows rendered `?` until the registry was filled from model
     cards. This is the guard against that returning."""
@@ -321,7 +331,7 @@ def test_every_model_on_the_shipped_board_resolves_to_a_size():
     assert all(r["size"]["bucket"] is not None for r in data["rows"])
 
 
-def test_ornith_is_a_sparse_model_not_a_dense_35b():
+def test_ornith_is_a_sparse_model_not_a_dense_35b(tmp_path):
     """Recorded as dense 35B until 2026-09-19, which put it top of the params
     column and made an A-tier score read as a large model underperforming
     rather than a 3B-active MoE holding its own."""
@@ -329,36 +339,44 @@ def test_ornith_is_a_sparse_model_not_a_dense_35b():
     entry = registry["ornith-1.5-35b"]
     assert entry["active_b"] == 3 and entry["params_b"] == 35
 
-    data = build_leaderboard(_REPO_ROOT / "results", scheme="module")
+    _write(tmp_path, _bench("ornith-1.5-35b"), judged=False)
+    data = build_leaderboard(tmp_path, scheme="module")
     row = next(r for r in data["rows"] if r["model"] == "ornith-1.5-35b")
     assert row["size"]["is_sparse"] is True
     assert row["size"]["sort_b"] == 3        # ranks by active
     assert row["size"]["bucket"] == "xl"     # but is loaded whole
 
 
-def test_bucket_counts_account_for_every_sized_row():
-    data = build_leaderboard(_REPO_ROOT / "results", scheme="module")
+def test_bucket_counts_account_for_every_sized_row(tmp_path):
+    # One model per bucket side that matters, plus one the registry has never
+    # heard of, which must stay out of every bucket rather than land in one.
+    for model in ("ornith-1.5-35b", "gemma-4-31b", "gemma-4-12b",
+                  "qwen3.5-4b", "qwen3.5-0.8b", "not-in-the-registry"):
+        _write(tmp_path, _bench(model), judged=False)
+    data = build_leaderboard(tmp_path, scheme="module")
     counted = sum(b["dense"] + b["sparse"] for b in data["size_buckets"])
     sized = [r for r in data["rows"] if r["size"]["bucket"] is not None]
     assert counted == len(sized)
     assert [b["key"] for b in data["size_buckets"]] == ["xl", "l", "m", "s"]
 
 
-def test_the_sticky_column_offsets_are_measured_not_hardcoded():
+def test_the_sticky_column_offsets_are_measured_not_hardcoded(tmp_path):
     """They were hand-computed constants matched to fixed column widths, so
     anything that changed a cell's contents broke them silently: the tier chip
     and the MoE badge grew columns 1 and 2 to 264px and 163px against declared
     230px and 108px, and columns 2-5 overlapped once the table scrolled."""
-    html = render_leaderboard_html(build_leaderboard(_REPO_ROOT / "results"))
+    _write(tmp_path, _bench("ornith-1.5-35b"), judged=False)
+    html = render_leaderboard_html(build_leaderboard(tmp_path))
     assert "applyStickyOffsets" in html
     for stale in ("left: 230px", "left: 338px", "left: 446px", "left: 554px"):
         assert stale not in html
 
 
-def test_the_params_column_sorts_on_a_dotted_key():
+def test_the_params_column_sorts_on_a_dotted_key(tmp_path):
     """`get` only understood the `modules.` prefix, so `size.sort_b` read an
     undefined property and the comparator's null branch fired on every row —
     clicking Params left the order untouched."""
-    html = render_leaderboard_html(build_leaderboard(_REPO_ROOT / "results"))
+    _write(tmp_path, _bench("ornith-1.5-35b"), judged=False)
+    html = render_leaderboard_html(build_leaderboard(tmp_path))
     assert 'key: "size.sort_b"' in html
     assert 'key.split(".").reduce(' in html
