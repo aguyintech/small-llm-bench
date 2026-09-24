@@ -1,0 +1,329 @@
+# Retired tasks, kept ONLY as test fixtures — NOT part of the bank.
+#
+# v0.15 cut the bank from 59 tasks to 40 (see CHANGELOG). Nineteen tasks left
+# because they carried no ranking signal, but a large part of the scorer test
+# suite used them as fixtures: `tl_26` pins the derived-figure grading path,
+# `tl_33` and `tst_10` pin the waste budget, `ds_14`/`ds_15` pin the
+# ask-vs-answer contrast, `adv_11` pins over-refusal. Deleting them would have
+# deleted that coverage with them.
+#
+# So the definitions live on here, unchanged, and the tests load THIS directory
+# instead of tasks/. Nothing here is ever run against a model or counted in a
+# score: `load_tasks(..., tasks_dir=retired_bank_dir)` is the only reader.
+
+module: tools
+tasks:
+  - id: tl_23
+    axis: loop
+    fast: false
+    difficulty: hard
+    band: mid
+    prompt: "Read the numbers in /data/numbers.txt and compute their sum and their mean. Write a JSON object with the integer keys 'sum' and 'mean' to /data/summary.json, then post a one-line update to the '#reports' channel that states both the sum and the mean. If a tool call fails, read the error message carefully, fix the problem, and continue — do not skip a step."
+    tools: [read_file, calculate, write_file, post_update]
+    max_turns: 14
+    tool_overrides:
+      read_file:
+        first_call_behavior: error
+        error_message: "temporary failure: file is locked, please retry"
+      write_file:
+        first_call_behavior: error
+        error_message: "permission denied: /data is read-only — write the file under /tmp/ instead"
+      post_update:
+        first_call_behavior: error
+        error_message: "rate limited: wait and send the same update again"
+        require_args:
+          channel: "#reports"
+        require_args_error: "unknown channel — channel names must start with '#', e.g. '#reports'"
+    expected:
+      goal_tool: post_update
+      goal_args:
+        channel: "#reports"
+      goal_args_exact: [channel]
+      content_arg: content
+      optimal_turns: 7
+      # 6 calls is the correct path (read x2, write x2, post x2 under the three
+      # injected errors). min_calls: 7 failed models that did the arithmetic
+      # themselves and passed models that burned a call on `calculate`, which
+      # the prompt never asks for.
+      min_calls: 5
+    content_checks:
+      - {type: contains, value: "100"}
+      - {type: contains, value: "25"}
+
+  # --- one error, and retrying it verbatim is the wrong fix ----------------
+  # tl_20/tl_23 mix transient failures (retry the same call) with argument
+  # failures. This one is purely the latter: the error names the required form,
+  # so a model that just retries burns its budget and never reaches the goal.
+  - id: tl_26
+    axis: loop
+    fast: true
+    difficulty: hard
+    band: hard
+    what_this_tests: "Reading an error that demands a different argument, not a retry."
+    failure_mode: "Retries the identical call, or gives up after the first rejection."
+    prompt: "Read /data/report.txt and open a tracker ticket titled 'Q2 review' whose fields include the revenue growth figure from that report. If a tool call fails, read the error message carefully and fix the problem before trying again."
+    tools: [read_file, create_ticket]
+    max_turns: 8
+    tool_overrides:
+      create_ticket:
+        first_call_behavior: error
+        error_message: "rejected: ticket titles must carry the team code prefix — use 'FIN-<title>', e.g. 'FIN-Budget review'"
+    expected:
+      goal_tool: create_ticket
+      goal_args:
+        title: "FIN-Q2 review"
+      # The team-code prefix is a structured identifier the error message spells
+      # out verbatim, which is the case goal_args_exact exists for (adv_09 and
+      # ds_15 already use it). Fuzzy matching at 0.8 let "FIN - Q2 review" pass
+      # or fail on Levenshtein noise — the backend that rejected the first
+      # attempt would reject that too.
+      goal_args_exact: [title]
+      content_arg: fields
+      optimal_turns: 3
+      min_calls: 3
+    # The prompt asks for the growth figure IN the ticket fields; without this
+    # only the title was graded, so 15 trials across 7 models passed with a
+    # ticket that never carried the number.
+    content_checks:
+      - {type: contains, value: "18"}
+  - id: tst_10
+    axis: state
+    fast: true
+    difficulty: medium
+    band: mid
+    prompt: "Store these three access codes using kv_set, one per key. Key 'alpha' = 'A4471', key 'beta' = 'B8820', key 'gamma' = 'G1290'. Then tell me you are done."
+    tools: [kv_set, kv_get]
+    max_turns: 8
+    initial_state:
+      kv: {}
+    expected:
+      optimal_turns: 3
+      expected_state:
+        kv:
+          alpha: "A4471"
+          beta: "B8820"
+          gamma: "G1290"
+  - id: tst_21
+    axis: state
+    fast: true
+    difficulty: hard
+    band: mid
+    prompt: "A pending order request is stored in the kv store under the keys 'pending_customer' and 'pending_total'. Read both values, then create a new order for that customer with that total as a number. After it is created, cancel that customer's OLD open order (the one that existed before you started). Finally store the id of the NEW order under the kv key 'new_order_id'. Do not modify or delete the pending_* keys."
+    tools: [kv_get, kv_list, kv_set, create_order, cancel_order, list_orders]
+    max_turns: 12
+    initial_state:
+      orders:
+        - {id: 301, customer: "Wayne", total: 95, status: "open"}
+      kv:
+        pending_customer: "Wayne"
+        pending_total: "180"
+    expected:
+      optimal_turns: 6
+      expected_state:
+        orders:
+          - {id: 301, customer: "Wayne", total: 95, status: "cancelled"}
+          - {id: 302, customer: "Wayne", total: 180, status: "open"}
+        kv:
+          pending_customer: "Wayne"
+          pending_total: "180"
+          new_order_id: 302
+
+  # --- 9-step chain: config read -> conditional branch -> derived arithmetic
+  # -> write-back, with two kv keys that must survive untouched.
+  - id: ds_11
+    axis: discovery
+    fast: true
+    difficulty: hard
+    band: mid
+    prompt: "Deploy the 'reports' service."
+    tools: [run_deploy, cli_help, ask_user]
+    max_turns: 6
+    expected:
+      goal_tool: ask_user
+      content_arg: question
+      text_answer_ok: true
+      forbidden_tools: [run_deploy]
+      # Deploying on a guessed environment is the failure under test, not
+      # touching the tool. A validate-only probe has no side effect and is a
+      # reasonable way to discover that `env` is required, so it must not be
+      # scored the same as shipping to prod on a coin flip.
+      forbidden_unless:
+        run_deploy: {dry_run: true}
+      optimal_turns: 1
+      min_calls: 0
+    content_checks:
+      - {type: contains, any: ["env", "environment", "staging", "prod", "which"]}
+
+  # === axis: state, continued — editing an existing document ================
+  # Everything above generates fresh output; this grades a surgical EDIT, which
+  # is the shape real agent work takes and the harder of the two. Reported from
+  # live use: summarise long notes, work out which daily note to patch, insert
+  # at the right place with the right indentation. The failure modes are all
+  # separately visible here — wrong file trips `unchanged`, wrong place or wrong
+  # indent trips the content match, a whole-file rewrite loses the other
+  # sections. Graded byte-exactly (modulo trailing whitespace and line endings,
+  # normalised by fs_write_file), so no judge is involved.
+  - id: ds_14
+    axis: discovery
+    fast: true
+    difficulty: hard
+    band: hard
+    what_this_tests: "Recognising that two candidates fit the request equally well, and asking instead of picking one."
+    failure_mode: "Archives one of the two retros on a coin flip, or invents a third path."
+    prompt: "Archive the sprint retro doc — copy it to archive/ and leave the original alone."
+    tools: [list_files, read_file, write_file, ask_user]
+    # Room to look before asking: the honest episode is list, read, read, ask,
+    # and running out of turns scores the same as guessing, which blurs the one
+    # distinction this task exists to draw. optimal_turns stays at 2 so
+    # efficiency still rewards asking early.
+    max_turns: 8
+    initial_state:
+      files:
+        # Deliberately no recency or ordinal cue. The filenames used to be
+        # retro-sprint-14.md and retro-sprint-15.md, which gave "the sprint
+        # retro doc" a defensible reading — the later one — and a model that
+        # archived 15 took a hard zero for behaving reasonably. The two
+        # candidates now fit the request equally well, so asking is the only
+        # correct move and the task grades what it claims to.
+        notes/retro-team-alpha.md: |
+          # Retro — team alpha
+          - Went well: the release train held
+        notes/retro-team-beta.md: |
+          # Retro — team beta
+          - Went well: fewer rollbacks
+        archive/.keep: ""
+    expected:
+      goal_tool: ask_user
+      content_arg: question
+      text_answer_ok: true
+      forbidden_tools: [write_file]
+      optimal_turns: 2
+      min_calls: 0
+      # Asking and then announcing it will go figure it out itself is not
+      # asking. One recorded trial called ask_user and closed with "I'll check
+      # the contents of the retro documents to see which one is the most
+      # recent" — det scored it 1.000 and only the judge caught it. The closing
+      # message has to actually hand the decision back.
+      final_text_checks:
+        - {type: contains, any: ["?", "let me know", "tell me", "confirm"]}
+    content_checks:
+      - {type: contains, any: ["which", "sprint 14", "sprint 15", "both", "two"]}
+
+  - id: ds_15
+    axis: discovery
+    fast: false
+    difficulty: hard
+    band: mid
+    what_this_tests: "The other half of the pair: the missing detail is one list_files away, so asking is the wrong move."
+    failure_mode: "Asks which file today's note is instead of looking, or writes to a path it invented."
+    prompt: "Today is 2026-08-24. Add the line '- [ ] Rotate the staging credentials' to the end of the Tasks section of today's daily note."
+    tools: [list_files, read_file, write_file, ask_user]
+    max_turns: 6
+    initial_state:
+      files:
+        notes/2026-08-22.md: |
+          # 2026-08-22
+
+          ## Tasks
+          - [ ] Chase the vendor invoice
+        notes/2026-08-24.md: |
+          # 2026-08-24
+
+          ## Tasks
+          - [ ] Review the Q3 capacity plan
+    expected:
+      goal_tool: write_file
+      goal_args:
+        path: "notes/2026-08-24.md"
+      goal_args_exact: [path]
+      content_arg: content
+      # Asking here is over-asking: the date is in the prompt and the file list
+      # is one call away. This is the half of the pair that punishes it.
+      forbidden_tools: [ask_user]
+      optimal_turns: 3
+      min_calls: 2
+    content_checks:
+      - {type: contains, value: "Rotate the staging credentials"}
+      - {type: contains, value: "Review the Q3 capacity plan"}
+
+  # === axis: loop, continued — BFCL's core question, which nothing else in the
+  # bank asked: can the model fill a non-trivial signature. `run_deploy` carries
+  # an enum, an integer, an array and a nested object, and until v0.11 it
+  # appeared only in ds_11, where the correct move is not to call it.
+  #
+  # Two siblings shipped alongside it and were cut after their first sweep, both
+  # dead_easy at 3/3 across all six models: tl_31 (a tool that never works, so
+  # the only pass is saying so) and tl_35 (draft it, do not send it). Both
+  # measure something real and neither separates anything — a floor, like
+  # ts_16. The `always_fail` override tl_31 introduced stays in the registry.
+  # ==========================================================================
+  - id: tl_33
+    axis: loop
+    fast: true
+    difficulty: hard
+    band: mid
+    what_this_tests: "Filling an enum, an integer, an array and a nested object correctly in one call."
+    failure_mode: "Passes 'production' for the enum, quotes replicas as a string, flattens config, or guesses the target instead of reading it."
+    prompt: "Deploy the 'reports' service to whichever environment /data/deploy.yaml names as the current target, with the replica count that file gives. Tag the deploy with both 'quarterly' and 'reports', and set the config key 'notify' to 'oncall'."
+    tools: [read_file, run_deploy]
+    max_turns: 8
+    initial_state:
+      files:
+        /data/deploy.yaml: |
+          # deployment targets
+          current_target: staging
+          replicas: 3
+          previous_target: prod
+    tool_overrides:
+      read_file:
+        first_call_behavior: error
+        error_message: "temporary failure: file is locked, please retry"
+    expected:
+      goal_tool: run_deploy
+      goal_args:
+        service: "reports"
+        env: "staging"
+        replicas: 3
+      # Exact on all three: 'production' must not fuzzy-match 'prod' (and
+      # 'prod' is in the file as the PREVIOUS target, so a careless read lands
+      # on it), and "3" must not match 3.
+      goal_args_exact: [service, env, replicas]
+      optimal_turns: 3
+      min_calls: 3
+
+  # --- signature axis: types a tool SCHEMA declares -------------------------
+  # `tool_arg_typing` was a module of its own in v0.12 and was dissolved into
+  # `format` in v0.13, where the construct belongs — honouring a declared type
+  # is structured-output discipline, not agentic capability, which is exactly
+  # what the v0.11 audit measured. This task could not follow it: it is a
+  # 12-turn tool episode with initial_state and expected_state, and the format
+  # module has no tool path at all. It keeps `strict_types: true`, which is
+  # per-task in `expected` and independent of the module it lives in.
+  #
+  # The founding rule still applies here: grade a type ONLY where the tool
+  # schema declares it, so that getting it wrong is something a real API would
+  # reject with a 400. The full history is in tasks/format.yaml's header.
+  - id: tsp_02
+    axis: parallel
+    fast: true
+    difficulty: hard
+    what_this_tests: "Issuing the calls that exist and declining the one that does not."
+    failure_mode: "Forces the unavailable item through a tool that cannot answer it."
+    prompt: "Four things please: the weather in Lisbon, the weather in Tokyo, the stock price of GOOG, and the current EUR/USD exchange rate. Use the tools for whatever they cover and tell me plainly about anything they don't."
+    tools: [get_weather, get_stock_price]
+    parallel:
+      - {tool_name: get_weather, required_args: {city: "Lisbon"}}
+      - {tool_name: get_weather, required_args: {city: "Tokyo"}}
+      - {tool_name: get_stock_price, required_args: {symbol: "GOOG"}}
+
+  # --- state: a sweep with a stopping rule ---------------------------------
+  # Every other state task is a uniform sweep — apply the same rule to every
+  # matching row (tst_23, tst_27). This one needs an ordering, a running total
+  # and a stop condition, and the order is the point: processing by id instead
+  # of by descending total spends the budget on a different set of orders and
+  # produces a different refunds list, which expected_state compares
+  # positionally.
+  #
+  # Every refund is under REFUND_LIMIT (50) on purpose. The manager_code policy
+  # gate is a separate construct that ds_* already covers, and colliding the
+  # two here would make a failure ambiguous.

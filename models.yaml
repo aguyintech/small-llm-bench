@@ -1,0 +1,167 @@
+# Model registry — what a name on the leaderboard actually refers to.
+#
+# Nothing in a result file records how big a model is. Until v1.0 the board
+# ranked "gemma-4-12b" above "ornith-1.5-35b" with no way to notice that the
+# larger model was losing, and every size claim in the CHANGELOG was inferred
+# from the model's own name string.
+#
+# `params_b` is total parameters in billions; `active_b` is what a forward pass
+# actually uses. They differ only for mixture-of-experts models, and the
+# difference is the point: this bank ranks MoEs by ACTIVE parameters
+# (gemma-4-26b-a4b lands below gemma-4-12b on its 4B active, CHANGELOG v0.15),
+# so a board that printed 26B beside that row would read as an inversion that
+# is not one.
+#
+# `arch` names the sparsity mechanism and is only meaningful alongside
+# `active_b`. It defaults to `moe`, which covers every sparse model here but
+# one: gemma-4-e2b-it reaches 2.3B active out of 5.1B total through per-layer
+# embeddings, not expert routing, so it is `ple`. The board prints this on a
+# badge, and a badge that said MoE there would simply be wrong.
+#
+# `variant_of` marks a row that is the same weights as another under a
+# different serving configuration. Those are not independent models, so the
+# size-inversion check in `sllmb items` skips them. The leaderboard still shows
+# them as ordinary rows; drop a variant's result file from the directory to
+# leave it off a published board.
+#
+# A model absent from this file still runs and still scores. It shows `?` in
+# the params column and is skipped by the size-ordering check. Adding your own
+# model here is a one-line PR and does not touch any code.
+
+models:
+  - name: qwen3.5-0.8b
+    params_b: 0.8
+    family: qwen
+    notes: "Dense. Qwen3.5 dense family is 0.8/2/4/9/27B."
+
+  - name: minicpm5-2b
+    params_b: 2.52
+    family: minicpm
+    notes: "Dense, 42 layers. Model card: 2,516,756,480 total (1.98B non-embedding)."
+
+  - name: LFM2.5-2.6B
+    params_b: 2.6
+    family: lfm
+
+  - name: granite-4.2-3b
+    params_b: 3
+    family: granite
+    notes: "Dense decoder-only. Granite 4.2 dropped 4.0's hybrid Mamba-2/MoE
+      for a plain dense transformer; family is 3B/8B/30B."
+
+  - name: qwen3.5-4b
+    params_b: 4
+    family: qwen
+
+  - name: neohorse-1-4b
+    params_b: 4
+    family: neohorse
+    notes: "Dense, post-trained from Qwen3.5-4B."
+
+  - name: spark-x2.5-4b
+    params_b: 4.11
+    family: spark
+    notes: "Dense decoder, 36 layers, hidden 2560."
+
+  - name: gemma-4-e2b-it
+    params_b: 5.1
+    active_b: 2.3
+    arch: ple
+    family: gemma
+    notes: "NOT an MoE. The E is 'effective': 5.1B total reaching 2.3B effective
+      through per-layer embeddings, so there is no expert routing to name."
+
+  - name: Ling-3.0-Tiny
+    params_b: 7.9
+    active_b: 1.3
+    family: ling
+    notes: "Hybrid-reasoning MoE (bailingmoe3), 7.9B total / 1.3B active per token."
+
+  - name: LFM2.5-8B-A1B
+    params_b: 8
+    active_b: 1
+    family: lfm
+    notes: "MoE, 1B active — ranked by active params."
+
+  - name: gemma-4-e4b-it
+    params_b: 8
+    active_b: 4
+    family: gemma
+    notes: "MoE, 8.0B total / 4.0B active. Unlike its E2B sibling this one does
+      route experts, so the two share a name convention and not an architecture."
+
+  - name: granite-4.2-8b
+    params_b: 8
+    family: granite
+    notes: "Dense decoder-only, same family as granite-4.2-3b (3B/8B/30B)."
+
+  - name: qwen3.5-9b
+    params_b: 9
+    family: qwen
+
+  - name: neohorse-1-9b
+    params_b: 9
+    family: neohorse
+    notes: "Dense, post-trained from Qwen3.5-9B."
+
+  - name: gemma-4-12b
+    params_b: 12
+    family: gemma
+
+  - name: gemma-4-26b-a4b
+    params_b: 25.2
+    active_b: 3.8
+    family: gemma
+    notes: "MoE, 128 experts, top-8 routed + 1 shared. The label rounds to
+      26B/A4B; the technical report gives 25.2B total / 3.8B active."
+
+  - name: qwen3.6-27b
+    params_b: 27
+    family: qwen
+
+  - name: qwen3.8-27b
+    params_b: 27
+    family: qwen
+
+  - name: muse-glimmer-30b
+    params_b: 29.6
+    family: muse
+    notes: "Dense causal transformer + perception encoder, 52 layers, hidden
+      6656, GQA 32/2. The card gives 29.6B total and says explicitly that the
+      figure INCLUDES the ~1.8B ViT-G/14 perception encoder, so that is the
+      number here; the name rounds it to 30B. Distilled from Muse Spark.
+      Dense — checked, because a 30B in this fleet is as likely to be a
+      low-active MoE (ornith-1.5-35b, qwen3.6-35b-a3b) as not."
+
+  - name: gemma-4-31b
+    params_b: 30.7
+    family: gemma
+    notes: "Dense, 60-layer text decoder. 30.7B; the name rounds to 31B."
+
+  - name: qwen3.6-35b-a3b
+    params_b: 35
+    active_b: 3
+    family: qwen
+    notes: "MoE, 256 experts, 8 routed + 1 shared per token."
+
+  - name: ornith-1.5-35b
+    params_b: 35
+    active_b: 3
+    family: ornith
+    notes: "MoE — served as Ornith-1.5-35B-A3B. Recorded here as a dense 35B
+      until 2026-09-19, which put it top of the params column and made its
+      score read as a large model underperforming rather than a 3B-active
+      MoE holding A tier. Same error class as the Ling-3.0-Tiny fix."
+
+  # --- serving variants: same weights, different configuration --------------
+  - name: qwen3.6-27b-thinking-cap
+    params_b: 27
+    family: qwen
+    variant_of: qwen3.6-27b
+    notes: "Reasoning budget capped externally. Not an independent model."
+
+  - name: qwen3.8-27b-v2
+    params_b: 27
+    family: qwen
+    variant_of: qwen3.8-27b
+    notes: "Second serving configuration of the same weights."

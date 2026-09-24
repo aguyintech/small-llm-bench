@@ -1,0 +1,40 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[dev]"
+
+      # The suite is air-gapped by design: mock tools, no model calls, no
+      # network. If a test ever needs an endpoint, it belongs behind a marker,
+      # not in CI.
+      - name: Run tests
+        run: pytest tests/ -q
+
+      - name: Check the task bank loads and the counts are pinned
+        run: |
+          python -c "
+          from small_llm_bench.runner import all_modules
+          from small_llm_bench.modules.base import load_tasks
+          total = sum(len(load_tasks(m.name, profile='full')) for m in all_modules())
+          print(f'{total} tasks across {len(all_modules())} modules')
+          "

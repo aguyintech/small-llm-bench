@@ -1,0 +1,137 @@
+# Retired tasks, kept ONLY as test fixtures — NOT part of the bank.
+#
+# v0.15 cut the bank from 59 tasks to 40 (see CHANGELOG). Nineteen tasks left
+# because they carried no ranking signal, but a large part of the scorer test
+# suite used them as fixtures: `tl_26` pins the derived-figure grading path,
+# `tl_33` and `tst_10` pin the waste budget, `ds_14`/`ds_15` pin the
+# ask-vs-answer contrast, `adv_11` pins over-refusal. Deleting them would have
+# deleted that coverage with them.
+#
+# So the definitions live on here, unchanged, and the tests load THIS directory
+# instead of tasks/. Nothing here is ever run against a model or counted in a
+# score: `load_tasks(..., tasks_dir=retired_bank_dir)` is the only reader.
+
+module: long_context
+tasks:
+  - id: lc_22
+    fast: false
+    difficulty: hard
+    band: mid
+    answer_type: numeric
+    haystack:
+      type: multi_hop
+      filler_tokens: 20000
+      chain:
+        - "Variable ALPHA is set to 47."
+        - "Variable BETA is set to ALPHA plus 15."
+        - "An earlier draft set BETA to 100, but that draft was discarded and must be ignored."
+        - "Variable GAMMA is set to BETA minus 9."
+        - "Variable DELTA is set to GAMMA times 2."
+    prompt: "Using only the document above, what is the final value of DELTA? Follow the variable definitions in order and ignore any discarded draft values. End your reply with the number."
+    constraints:
+      # The prompt dictates where the answer goes; grading it here keeps
+      # that instruction from being decoration only the judge notices.
+      - {type: ends_with_number}
+    expected: {answer: 106, exact: true}
+
+  # --- 32k: deep placement, where lost-in-the-middle bites hardest ---------
+  # lc_08 sits at 0.35 depth; this one sits at 0.75 with the same stale-value
+  # trap, so a model that only skims the opening pages surfaces the old code.
+  - id: lc_52
+    fast: false
+    difficulty: hard
+    answer_type: factual
+    what_this_tests: "Counting four interleaved keywords across 24k tokens."
+    failure_mode: "Names the runner-up, or the keyword it happened to see first."
+    haystack:
+      type: aggregation
+      filler_tokens: 24000
+      inject:
+        ORCHID: 9
+        MARIGOLD: 7
+        JUNIPER: 6
+        CEDAR: 4
+    prompt: "Using only the document above, which keyword is mentioned the most times? Answer with just the keyword."
+    expected:
+      answer: "ORCHID"
+      accept: ["orchid"]
+
+  # --- multi-hop chain where one link is stated only by association ---------
+  # The bank's two best long-context tasks are lc_45 (a 5-link chain, +0.89)
+  # and lc_12 (a needle sharing no words with the question). This is both at
+  # once: WEST depends on a depot count that no line in the document ties to
+  # the word in the chain, so the model has to make the NoLiMa hop (the Little
+  # Mermaid stands in Copenhagen) before the arithmetic can even start.
+  #
+  # Every wrong path lands on a distinct number, which keeps the failure
+  # readable: Oslo gives 63, Stockholm 75, the pre-consolidation Copenhagen
+  # figure 68, and dropping the hop entirely leaves the chain unfinished.
+  - id: lc_45
+    fast: false
+    difficulty: hard
+    band: mid
+    answer_type: numeric
+    what_this_tests: "Holding a 5-link variable chain together across 48k tokens."
+    failure_mode: "Loses an intermediate binding, or picks up the discarded draft."
+    haystack:
+      type: multi_hop
+      filler_tokens: 48000
+      chain:
+        - "Variable SIGMA is set to 33."
+        - "Variable TAU is set to SIGMA plus 27."
+        - "A superseded revision set TAU to 12, but that revision was withdrawn and must be ignored."
+        - "Variable OMEGA is set to TAU minus 20."
+        - "Variable KAPPA is set to OMEGA times 3."
+    prompt: "Using only the document above, what is the final value of KAPPA? Follow the variable definitions in order and ignore any withdrawn revision values. End your reply with the number."
+    constraints:
+      # The prompt dictates where the answer goes; grading it here keeps
+      # that instruction from being decoration only the judge notices.
+      - {type: ends_with_number}
+    expected: {answer: 120, exact: true}
+
+  # --- latent hop: the needle shares no words with the question -------------
+  # NoLiMa (arXiv:2502.05167, ICML'25). Our other needles are lexically matched
+  # to the question, so they measure string search; this one needs one hop of
+  # world knowledge (opera house -> which city). Published spread at 4k is
+  # Gemma-3-4B 16.4 vs Gemma-3-27B 48.1, where plain retrieval is saturated for
+  # everything above 2B. Length stays low on purpose: below 32k, complexity is
+  # the difficulty dial and length is not.
+
+  # Retired v1.0. It duplicated lc_08's `multi_key` construct and cost the
+  # most of the three cheap long_context tasks (1.73 min/model vs lc_08's
+  # 1.22 and lc_12's 1.16) for the same two-model dip, and its 32k depth is
+  # exactly what the lc_63 cycles measured as irrelevant: a 4B pulls a
+  # 44-character key out of 54k tokens of this filler 3/3. Kept here because
+  # tests/test_new_axes.py pins the multi_key stale-value distractor shape
+  # against it.
+  - id: lc_31
+    fast: true
+    difficulty: hard
+    band: mid
+    answer_type: numeric
+    what_this_tests: "Retrieval at 32k with the needle three quarters of the way in."
+    failure_mode: "Returns a distractor, or the rotated-out stale value."
+    haystack:
+      type: multi_key
+      filler_tokens: 32000
+      needle: "The Lisbon datacenter access code is 5162."
+      distractors:
+        - "The Lisbon datacenter badge code is 8804."
+        - "The Lisbon warehouse access code is 3390."
+        - "The Lisbon datacenter access code was 7741 until it was rotated last quarter."
+        - "The Ljubljana datacenter access code is 5126."
+      position: 0.75
+    prompt: "Using only the document above, what is the CURRENT Lisbon datacenter access code? End your reply with the number."
+    constraints:
+      # The prompt dictates where the answer goes; grading it here keeps
+      # that instruction from being decoration only the judge notices.
+      - {type: ends_with_number}
+    expected: {answer: 5162, exact: true}
+
+  # --- latent hop: the needle shares no words with the question -------------
+  # NoLiMa (arXiv:2502.05167, ICML'25). Our other needles are lexically matched
+  # to the question, so they measure string search; this one needs one hop of
+  # world knowledge (opera house -> which city). Published spread at 4k is
+  # Gemma-3-4B 16.4 vs Gemma-3-27B 48.1, where plain retrieval is saturated for
+  # everything above 2B. Length stays low on purpose: below 32k, complexity is
+  # the difficulty dial and length is not.

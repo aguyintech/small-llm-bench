@@ -1,0 +1,128 @@
+module: knowledge
+# GSM8K / GSM-Symbolic reasoning, MMLU-Pro (10-option) multiple choice, factual
+# recall, and calibration traps that reward admitting uncertainty over guessing.
+tasks:
+  # --- GSM-Symbolic-style: novel multi-step, memorization-resistant -------
+  - id: kn_18
+    fast: false
+    difficulty: medium
+    band: anchor
+    prompt: "A workshop buys 7 crates of bolts. Each crate holds 144 bolts. They use 218 bolts on Monday and 367 on Tuesday, then receive a delivery of 2 more crates. How many bolts do they have now? End your reply with the final number."
+    constraints:
+      # The prompt dictates where the answer goes; grading it here keeps
+      # that instruction from being decoration only the judge notices.
+      - {type: ends_with_number}
+    answer_type: numeric
+    expected:
+      answer: 711
+      # Exact: the answer is a specific code or the result of a stated
+      # arithmetic chain, not a measurement. The default +/-1% tolerance
+      # accepted a transposed access code (5126 for 5162).
+      exact: true
+
+  # --- execution reasoning, not code generation -----------------------------
+  # CRUXEval (arXiv:2401.03065). Its own finding is that HumanEval-style
+  # generation skill does NOT transfer to predicting what code does, so this is
+  # an orthogonal axis rather than a harder `code` task — and `code` is at 1.000
+  # for the four strongest models. ~10 output tokens, the best signal-per-token
+  # available.
+  - id: kn_21
+    fast: true
+    difficulty: hard
+    band: mid
+    answer_type: numeric
+    what_this_tests: "Carrying two coupled containers through a loop: a dict of running totals and a list whose order the reset branch rewrites."
+    failure_mode: "Tracks the totals but not the reordering (or the reverse), so the positional weights at the end are applied to the wrong keys."
+    prompt: |
+      What does this function return for the call shown? Work it out step by
+      step, then end your reply with the number.
+
+      def f(items):
+          seen, order = {}, []
+          for name, n in items:
+              if name in seen:
+                  seen[name] += n
+              else:
+                  seen[name] = n
+                  order.append(name)
+              if seen[name] > 5:
+                  seen[name] = 0
+                  order.remove(name)
+                  order.insert(0, name)
+          return sum(seen[k] * (i + 1) for i, k in enumerate(order))
+
+      f([("a", 3), ("b", 4), ("a", 4), ("c", 1), ("b", 2), ("a", 5)])
+    expected:
+      answer: 13
+      exact: true
+    constraints:
+      - {type: ends_with_number}
+
+  # --- execution tracing, harder sibling of kn_21 ---------------------------
+  # kn_21 (+0.44) was the only task in this module with any discrimination
+  # left; the four arithmetic word problems beside it sat at 0.90-0.97 and
+  # three were retired in v0.13. CRUXEval (arXiv:2401.03065) is the reason this
+  # construct is worth expanding: its own finding is that HumanEval-style
+  # generation skill does NOT transfer to predicting what code does.
+  #
+  # Three traps compound here — a while/continue that skips the increment, a
+  # multiplier that reads the length of a list being built, and a mutable
+  # default argument that survives into the second call. Asking for the SECOND
+  # value is what makes the default argument load-bearing: a model that resets
+  # `seen` gets 6, one that traces only the first call gets 14.
+  #
+  # `band` is deliberately unset on every task added in v0.13: bands are
+  # assigned from measurement, and these have not been measured yet.
+  - id: kn_31
+    fast: true
+    difficulty: hard
+    answer_type: numeric
+    what_this_tests: "Tracing a loop whose state survives between two calls."
+    failure_mode: "Resets the default argument between calls, or answers with the first call's value."
+    prompt: |
+      Work out what this program prints, then end your reply with
+      the number printed by the SECOND print statement.
+
+      def f(n, seen=[]):
+          total = 0
+          i = 1
+          while True:
+              if i > n:
+                  break
+              if i % 3 == 0:
+                  seen.append(i)
+                  i += 2
+                  continue
+              total += i * len(seen)
+              i += 1
+          return total + sum(seen)
+
+      print(f(7))
+      print(f(4))
+    expected:
+      answer: 18
+      exact: true
+    constraints:
+      - {type: ends_with_number}
+
+  # --- GSM-Symbolic: the same arithmetic, plus one plausible red herring ----
+  # GSM-Symbolic (arXiv:2410.05229) measures 15-65% accuracy drops from adding
+  # a clause that looks operative and is not, on problems where plain GSM8K is
+  # saturated. That is exactly the situation this module was in: kn_12, kn_13
+  # and kn_14 were three clean multi-step problems at 0.90-0.97.
+  #
+  # Two of the three distractors are decorative (years open, headcount). The
+  # third is the real one: Friday's extra trays are the same unit as the
+  # quantity being asked about, on a day the question does not cover.
+  - id: kn_33
+    fast: true
+    difficulty: hard
+    answer_type: numeric
+    what_this_tests: "Multi-step arithmetic with one plausible but irrelevant quantity."
+    failure_mode: "Folds Friday's trays into Thursday's total."
+    prompt: "A bakery makes 12 trays of rolls each morning, 24 rolls to a tray. On Thursday they sold 187 rolls before noon and 62 after noon. The bakery has been open for 15 years and employs 6 bakers. On Friday morning they made 3 extra trays. How many unsold rolls were left at the end of Thursday? End your reply with the final number."
+    expected:
+      answer: 39
+      exact: true
+    constraints:
+      - {type: ends_with_number}

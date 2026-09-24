@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "small-llm-bench"
+version = "1.0.0"
+description = "Lightweight benchmark CLI for small local LLMs (1B-35B): tool calling, agentic loops, coding, knowledge."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "small-llm-bench contributors" }]
+requires-python = ">=3.10"
+keywords = ["llm", "benchmark", "evaluation", "tool-calling", "agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "httpx>=0.27",
+    "rich>=13.0",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "typer>=0.12",
+    "jinja2>=3.1",
+    "pyyaml>=6.0",
+    "python-levenshtein>=0.25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[project.scripts]
+small-llm-bench = "small_llm_bench.cli:app"
+# Short alias. The docs, the .env comments and every recorded command in the
+# CHANGELOG use it, and typing the long form 40 times a sweep is its own
+# argument. Both names run the same app.
+sllmb = "small_llm_bench.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/aguyintech/small-llm-bench"
+
+[tool.setuptools.packages.find]
+include = ["small_llm_bench*"]
+
+[tool.setuptools.package-data]
+small_llm_bench = ["templates/*.j2"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,1022 @@
+module: tools
+# Every tool-using axis in one module: one weighted score, with the four axes
+# reported as sub-rows for diagnosis. They were four separate modules until
+# v0.10, which left `call` and `discovery` holding one task each while still
+# carrying 0.11 and 0.09 of the balanced headline — a single always-passed
+# anchor deciding a ninth of the score. Grading is unchanged: the scorer
+# dispatches on task shape (no_call/tool_name -> single call, expected_state ->
+# final state, goal_tool -> agentic loop), exactly the split the four modules
+# encoded.
+tasks:
+  - id: tl_02
+    axis: loop
+    fast: true
+    difficulty: medium
+    band: anchor
+    prompt: "Check the weather in Lisbon. If it is NOT rainy, create a calendar event called 'Picnic' on 2026-06-08 at 12:00. If it is rainy, do nothing and tell me."
+    tools: [get_weather, create_event]
+    max_turns: 6
+    expected:
+      goal_tool: create_event
+      goal_args:
+        title: "Picnic"
+      optimal_turns: 2
+      min_calls: 2
+
+  # --- one error, and retrying it verbatim is the wrong fix ----------------
+  - id: tst_03
+    axis: state
+    fast: true
+    difficulty: hard
+    band: anchor
+    prompt: "Look at all the current orders. Ship every order whose total is 100 or more, and cancel the rest."
+    tools: [list_orders, update_order, cancel_order]
+    max_turns: 10
+    initial_state:
+      orders:
+        - {id: 101, customer: "Acme", total: 250, status: "open"}
+        - {id: 102, customer: "Globex", total: 60, status: "open"}
+        - {id: 103, customer: "Initech", total: 140, status: "open"}
+    expected:
+      optimal_turns: 4
+      expected_state:
+        orders:
+          - {id: 101, customer: "Acme", total: 250, status: "shipped"}
+          - {id: 102, customer: "Globex", total: 60, status: "cancelled"}
+          - {id: 103, customer: "Initech", total: 140, status: "shipped"}
+
+  # --- memory / KV persistence --------------------------------------------
+  - id: tst_15
+    axis: state
+    fast: false
+    difficulty: hard
+    band: mid
+    prompt: "Review all current orders. Process them in order of ascending order id. Cancel every order whose total is under 100. For every order whose total is 100 or more, mark it shipped and issue a refund equal to 10% of that order's total."
+    tools: [list_orders, update_order, cancel_order, issue_refund]
+    max_turns: 14
+    initial_state:
+      orders:
+        - {id: 201, customer: "Acme", total: 250, status: "open"}
+        - {id: 202, customer: "Globex", total: 60, status: "open"}
+        - {id: 203, customer: "Initech", total: 140, status: "open"}
+        - {id: 204, customer: "Hooli", total: 40, status: "open"}
+      balance: 1000
+      refunds: []
+    expected:
+      optimal_turns: 6
+      expected_state:
+        orders:
+          - {id: 201, customer: "Acme", total: 250, status: "shipped"}
+          - {id: 202, customer: "Globex", total: 60, status: "cancelled"}
+          - {id: 203, customer: "Initech", total: 140, status: "shipped"}
+          - {id: 204, customer: "Hooli", total: 40, status: "cancelled"}
+        balance: 961
+        refunds:
+          - {order_id: 201, amount: 25}
+          - {order_id: 203, amount: 14}
+  # --- 9-step chain: config read -> conditional branch -> derived arithmetic
+  # -> write-back, with two kv keys that must survive untouched.
+  - id: tst_23
+    axis: state
+    fast: false
+    difficulty: hard
+    band: mid
+    prompt: "Read the refund percentage from the kv key 'refund_policy' — it is a whole-number percent. Then handle every OPEN order: ship it if its total is 100 or more, otherwise cancel it. Leave orders that are not open alone. For each order you shipped, issue a refund of exactly that percentage of that order's total. Finally store the number of orders you shipped under the kv key 'shipped_count' and the sum of the refunds you issued under the kv key 'refund_total'. Never change 'refund_policy' or 'audit_lock'."
+    tools: [list_orders, update_order, cancel_order, issue_refund, kv_get, kv_set, kv_list]
+    max_turns: 16
+    initial_state:
+      orders:
+        - {id: 401, customer: "Nakatomi", total: 120, status: "open"}
+        - {id: 402, customer: "Nakatomi", total: 45, status: "open"}
+        - {id: 403, customer: "Tyrell", total: 200, status: "open"}
+        - {id: 404, customer: "Tyrell", total: 75, status: "shipped"}
+      balance: 1000
+      refunds: []
+      kv:
+        refund_policy: "10"
+        audit_lock: "do-not-touch"
+    expected:
+      optimal_turns: 9
+      expected_state:
+        orders:
+          - {id: 401, customer: "Nakatomi", total: 120, status: "shipped"}
+          - {id: 402, customer: "Nakatomi", total: 45, status: "cancelled"}
+          - {id: 403, customer: "Tyrell", total: 200, status: "shipped"}
+          - {id: 404, customer: "Tyrell", total: 75, status: "shipped"}
+        balance: 968
+        refunds:
+          - {order_id: 401, amount: 12}
+          - {order_id: 403, amount: 20}
+        kv:
+          refund_policy: "10"
+          audit_lock: "do-not-touch"
+          shipped_count: 2
+          refund_total: 32
+
+  # === axis: discovery — REMOVED in v0.15, and the removal is the finding ====
+  # The axis graded whether a model asks when the request is underspecified
+  # instead of acting on a guess. Its last three tasks (ds_11, ds_14, ds_15)
+  # went with the v0.15 cut, so the bank now measures nothing about what a
+  # model declines to do.
+  #
+  # It is not a loss of ranking power, and that is precisely the problem with
+  # it: restraint tracked post-training rather than size at every scale
+  # measured — ds_14 sat at 0.33 pass with 0.00 discrimination over ten
+  # models, and the paired adversarial items adv_09/adv_11 came in at −0.78
+  # and −0.11, ranking models backwards. The axis had already inverted on the
+  # 13-model sweep before that.
+  #
+  # ds_14/ds_15 were a deliberate PAIR (ask when genuinely ambiguous / do not
+  # ask when it is answerable), and so were adv_09/adv_11. A single policy
+  # satisfies each pair, so half a pair lets a blanket-refuse model score 1.0.
+  # They were therefore dropped whole, never split. Rebuilding the axis means
+  # rebuilding it as contrast pairs (BFCL missing-parameter) — not restoring
+  # any one of these. ========================================================
+
+  # Banked v0.17. Probed cycle 1 at max_turns 14 (INVALID-adjacent: the 12B's
+  # failures were turn exhaustion), then cycle 2 at max_turns 20 / max_tokens
+  # 16384, k=5 per model, plus off-probe confirmation on two more models:
+  #   qwen3.5-4b 0/5 | gemma-4-12b 1/5 | qwen3.5-9b 1/5
+  #   qwen3.6-27b 5/5 | gemma-4-31b 5/5
+  # Each family's own mid->strong leg is Fisher p=0.0476; mid pooled 2/10 vs
+  # strong pooled 10/10 is p=0.00071. The FIRST bank task where both mid models
+  # agree, which is the precondition for a band claim (the mid band is
+  # otherwise incoherent — see CHANGELOG v0.16). The w|m leg is NOT real
+  # (0/5 vs 2/10, p=0.52): this ranks mid vs large, with a weak floor that also
+  # fails. `band` unset on purpose; assign it from the fleet sweep.
+  # --- state: a correction that flips an earlier conditional --------------------
+  # tst_57 shape (queue of timestamped requests, one retroactive cancel) — which
+  # the 4B already clears 3/3 — plus the thing it lacks: a later request that
+  # CORRECTS an earlier figure, where the corrected figure changes whether a
+  # conditional rule fires. Thresholds are set so widget-b lands on 30 either way:
+  #   corrected   b 25+5  = 30, rule needs >35, no transfer -> c 12   (right)
+  #   uncorrected b 25+15 = 40, rule fires, 10 b->c        -> c 22   (ignored it)
+  #   delta-fix   as above then -10 on the current count   -> b 20, c 22
+  # So widget-c alone separates "re-evaluated the conditional" from "did not", and
+  # widget-b alone separates mt_23's documented delta-application failure. The
+  # threshold clears 35 by 5 in one branch and misses by 5 in the other, so no
+  # answer depends on reading "above" as strict or inclusive.
+  - id: tst_63
+    axis: state
+    fast: false
+    difficulty: hard
+    # 16384, not 8192: at 8192 two of gemma-4-12b's five trials came back
+    # `truncation_class: incomplete` and were EXCLUDED from the pass rate as a
+    # coverage gap, leaving too few scorable trials to read a verdict. The 27B
+    # finishes in 9 calls on ~3k tokens; gemma needs 20 calls and 8.8k+ and still
+    # truncates. Budget-starving it reads as incapacity (the pf_01 precedent), so
+    # give it room and let the failure be substance or not at all.
+    max_tokens: 16384
+    what_this_tests: "Re-evaluating a conditional adjustment after a later request corrects the figure it depended on."
+    failure_mode: "Applies the correction as a delta to the current count, leaves widget-c at 22 because the conditional was never re-evaluated, applies requests in filename order, or applies the cancelled request."
+    prompt: |
+      The queue directory holds stock adjustment requests. Apply them to the
+      ledger's "## Counts" section in the order of the `time` field each request
+      carries.
+
+      Request types:
+      - `adjust:` changes one item's count by the stated amount.
+      - `rule:` is a one-off rebalancing step, evaluated against the counts as
+        they stand at that request's time.
+      - `cancels:` withdraws the request it names — that one must not be applied
+        at all.
+      - `corrects:` replaces the figure in the request it names — the named
+        request should be treated as if it had always carried the corrected
+        figure.
+
+      Write the resulting counts back to the ledger, same format, and change
+      nothing else. Leave the request files alone.
+    tools: [list_files, read_file, write_file]
+    # 20, not 14: the golden trace is 9 calls (list + 7 reads + write), but cycle 1
+    # had gemma-4-12b spend all 14 turns re-reading the queue and never write the
+    # ledger in 2/3 trials, on ~520 completion tokens — turn exhaustion, not the
+    # construct. Its one trial that reached a write was fully correct. Same class
+    # of defect as pf_01's 6144 token cap: budget-starving a model reads as
+    # incapacity. `_within_budget` allowance is max(2*9, 9+3) = 18, so efficiency
+    # still penalises a model that wanders.
+    max_turns: 20
+    initial_state:
+      files:
+        stock/ledger.md: |
+          # Stock ledger
+
+          ## Counts
+          - widget-a: 40
+          - widget-b: 25
+          - widget-c: 12
+          - widget-d: 8
+        queue/r-001.md: |
+          id: r-001
+          time: 2026-08-25 10:05
+          adjust: widget-b +15
+        queue/r-002.md: |
+          id: r-002
+          time: 2026-08-25 09:10
+          adjust: widget-a -8
+        queue/r-003.md: |
+          id: r-003
+          time: 2026-08-25 11:40
+          rule: if widget-b is above 35 at this point, transfer 10 from widget-b to widget-c
+        queue/r-004.md: |
+          id: r-004
+          time: 2026-08-25 13:00
+          adjust: widget-d +4
+        queue/r-005.md: |
+          id: r-005
+          time: 2026-08-25 14:20
+          corrects: r-001
+          adjust: widget-b +5
+          note: r-001 recorded the wrong delivery figure; this is the correct one
+        queue/r-006.md: |
+          id: r-006
+          time: 2026-08-25 13:30
+          cancels: r-004
+    expected:
+      optimal_turns: 9
+      # How to read a failure. Each check carries its own value in the
+      # `breakdown.file_checks` label (v1.0; before that the four
+      # `section_contains` collapsed onto one key and could not say which
+      # widget missed), so the per-widget outcome is readable directly:
+      #   a32 b30 c12 d8 -> correct
+      #   a32 b30 c22 d8 -> the conditional was never re-evaluated (score 0.88)
+      #   a32 b20 c22 d8 -> the correction was applied as a delta (score 0.76)
+      file_checks:
+        stock/ledger.md:
+        - type: section_contains
+          section: '## Counts'
+          value: 'widget-a: 32'
+        - type: section_contains
+          section: '## Counts'
+          value: 'widget-b: 30'
+        - type: section_contains
+          section: '## Counts'
+          value: 'widget-c: 12'
+        - type: section_contains
+          section: '## Counts'
+          value: 'widget-d: 8'
+        - type: bullets_wellformed
+          section: '## Counts'
+      unchanged_paths:
+        files:
+        - queue/r-001.md
+        - queue/r-002.md
+        - queue/r-003.md
+        - queue/r-004.md
+        - queue/r-005.md
+        - queue/r-006.md
+
+  # === axis: state, continued — editing an existing document ================
+  # Everything above generates fresh output; this grades a surgical EDIT, which
+  # is the shape real agent work takes and the harder of the two. Reported from
+  # live use: summarise long notes, work out which daily note to patch, insert
+  # at the right place with the right indentation. The failure modes are all
+  # separately visible here — wrong file trips `unchanged`, wrong place or wrong
+  # indent trips the content match, a whole-file rewrite loses the other
+  # sections. Graded byte-exactly (modulo trailing whitespace and line endings,
+  # normalised by fs_write_file), so no judge is involved.
+  - id: tst_35
+    axis: state
+    fast: false
+    difficulty: hard
+    # Banded from measured behaviour, not from ambition: gemma-4-12b passes 3/3
+    # (det 0.983, the deduction being turn efficiency), so this is `hard`, not
+    # `frontier`. Re-band again if the sweep says otherwise.
+    band: hard
+    what_this_tests: "Format-by-example, target selection among near-identical files, and an indentation-exact in-place edit."
+    failure_mode: "Patches the draft or yesterday's note, appends at the end of the file, mis-indents the nested bullet, or rewrites the file and drops the other sections."
+    prompt: |
+      Today is 2026-08-24. Add a summary of the meeting below to today's
+      daily note.
+
+      Where it goes: inside the "## Meetings" section, as a nested bullet
+      directly under the existing "- Standup" bullet.
+
+      Format: copy this example's shape exactly, filling in the values from the
+      meeting notes. This is an example from another day, not the answer:
+
+        - **Weekly sync** — decision: freeze the schema; owner: Priya; due: 2026-07-11
+
+      Change nothing else in the file, and do not touch any other file.
+
+      Meeting notes:
+      "Payments review, 24 Aug. Present: Dana, Marco, Priya. Marco walked through
+      the gateway migration plan that was drafted back on 2026-08-12. Concern
+      from Priya: the reconciliation job still double-counts refunds when a
+      chargeback lands in the same window, and the fix is not in this sprint.
+      Dana raised that the payments provider freezes changes for month-end from
+      2026-08-27 anyway. After some back and forth the meeting decided to delay
+      the migration rather than ship it half-tested; Marco pushed for shipping
+      behind a flag but did not carry the room. Dana will own it and report back.
+      Agreed date to revisit: 2026-08-29. Separately, Priya mentioned the Q3
+      capacity plan review is still unscheduled, and Marco is on leave from
+      2026-09-02."
+    tools: [list_files, read_file, write_file]
+    max_turns: 8
+    initial_state:
+      files:
+        notes/2026-08-22.md: |
+          # 2026-08-22
+
+          ## Meetings
+          - Standup
+            - **Weekly sync** — decision: freeze the schema; owner: Priya; due: 2026-07-11
+
+          ## Tasks
+          - [ ] Chase the vendor invoice
+
+          ## Notes
+          - Printer on floor 2 is out of toner
+        notes/2026-08-24.md: |
+          # 2026-08-24
+
+          ## Meetings
+          - Standup
+
+          ## Tasks
+          - [ ] Rotate the staging credentials
+          - [ ] Review the Q3 capacity plan
+
+          ## Notes
+          - Coffee machine is fixed
+        notes/2026-08-24-draft.md: |
+          # 2026-08-24 (draft)
+
+          ## Meetings
+          - Standup
+
+          ## Tasks
+        notes/templates/daily.md: |
+          # <date>
+
+          ## Meetings
+          - Standup
+
+          ## Tasks
+
+          ## Notes
+    expected:
+      optimal_turns: 3
+      # Graded on STRUCTURE, not on the summary's prose. Until v1.0 this was a
+      # byte-exact `expected_state` with one `accept_state` variant, and every
+      # judge rescue in the whole stored fleet landed here — five of them, three
+      # at det_score 0.995, all for the same miss: the model wrote "delay
+      # migration" where the fixture said "delay the migration". An article.
+      #
+      # That made the bank's only mid-band tools signal a product of the LLM
+      # judge patching a string comparison, which is the fm_17 defect the
+      # project already removed once ("it graded which synonym the sampler
+      # reached for"). What the task claims to test — format-by-example, target
+      # selection among near-identical files, an indentation-exact in-place
+      # edit — is all structural, so it is now all graded structurally.
+      #
+      # The two-space indent in the first check is the nesting test: an
+      # unindented bullet cannot contain it, and a four-space one is caught by
+      # bullets_wellformed, which fails a level jump greater than one.
+      file_checks:
+        notes/2026-08-24.md:
+          - type: section_contains
+            section: '## Meetings'
+            value: "  - **Payments review**"
+          - type: section_contains
+            section: '## Meetings'
+            value: "- Standup"
+          - type: section_contains
+            section: '## Meetings'
+            value: "owner: Dana"
+          - type: section_contains
+            section: '## Meetings'
+            value: "due: 2026-08-29"
+          # WHICH decision was reached is the extraction under test — the notes
+          # also carry Marco's rejected proposal to ship behind a flag — but
+          # which verb the model reaches for is not. Object and direction are
+          # graded; phrasing is not.
+          - type: section_contains
+            section: '## Meetings'
+            value: "migration"
+          - type: section_contains
+            section: '## Meetings'
+            any: ["delay", "postpone", "defer", "hold"]
+          - type: bullets_wellformed
+            section: '## Meetings'
+          # "Change nothing else in the file": every original line survives.
+          - type: lines_preserved
+      unchanged_paths:
+        files:
+          - notes/2026-08-22.md
+          - notes/2026-08-24-draft.md
+          - notes/templates/daily.md
+
+  # --- signature axis: types a tool SCHEMA declares -------------------------
+  # `tool_arg_typing` was a module of its own in v0.12 and was dissolved into
+  # `format` in v0.13, where the construct belongs — honouring a declared type
+  # is structured-output discipline, not agentic capability, which is exactly
+  # what the v0.11 audit measured. This task could not follow it: it is a
+  # 12-turn tool episode with initial_state and expected_state, and the format
+  # module has no tool path at all. It keeps `strict_types: true`, which is
+  # per-task in `expected` and independent of the module it lives in.
+  #
+  # The founding rule still applies here: grade a type ONLY where the tool
+  # schema declares it, so that getting it wrong is something a real API would
+  # reject with a 400. The full history is in tasks/format.yaml's header.
+  - id: tat_03
+    axis: signature
+    # 12288, up from 6144, itself up from the tools module default. Each raise
+    # was made for the same model and each one was too small: LFM2.5-8B-A1B
+    # lost two of three trials at 2048, then hit 6144 EXACTLY on the v1.0
+    # sweep — a completion that lands on the cap to the token did not finish,
+    # it was stopped. Raised past the point where the next trial can tell us
+    # anything new about the ceiling rather than about the model.
+    max_tokens: 12288
+    fast: true
+    difficulty: hard
+    band: mid
+    tier: hard
+    # The numbers arrive as quoted strings in the kv store, so the model must
+    # CONVERT rather than copy: update_order declares order_id: integer and
+    # create_order declares total: number, and the seeded values are "601" and
+    # "250". Passing them straight through is the failure under test, and it is
+    # a failure a real API returns a 400 for — unlike storing a number as a
+    # string in an untyped field, which the first version of this task graded
+    # and which measured nothing.
+    prompt: "The kv keys 'target_order' and 'reorder_total' hold an order id and an amount. Read both. Cancel the order with that id, then create a new order for the same customer with that amount as the total. Leave the kv keys alone."
+    tools: [kv_get, kv_list, list_orders, update_order, create_order]
+    max_turns: 12
+    initial_state:
+      orders:
+        - {id: 601, customer: "Acme", total: 150, status: "open"}
+        - {id: 602, customer: "Globex", total: 80, status: "open"}
+      kv:
+        target_order: "601"
+        reorder_total: "250"
+    expected:
+      strict_types: true
+      optimal_turns: 5
+      unchanged: [kv]
+      expected_state:
+        orders:
+          - {id: 601, customer: "Acme", total: 150, status: "cancelled"}
+          - {id: 602, customer: "Globex", total: 80, status: "open"}
+          # create_order declares total: number — 250, never "250".
+          - {id: 603, customer: "Acme", total: 250, status: "open"}
+
+  # --- parallel axis: several independent calls in one turn -----------------
+  # BFCL v3's parallel/multiple category, which this bank had no coverage of at
+  # all — `Task.parallel` and `scorer._score_parallel` were fully implemented
+  # with zero tasks reaching them. The failure it catches is real and common in
+  # small models: emit one call and stop, or serialise four independent lookups
+  # across four turns.
+  #
+  # Only `city` and `symbol` are graded. The construct here is parallelism, not
+  # argument filling, and `units` defaults to celsius in the schema — grading a
+  # model for omitting a default it was entitled to omit would be the same
+  # class of flaw as the cd_27 import contradiction.
+  #
+  # `band` is deliberately unset on every task added in v0.13: bands are
+  # assigned from measurement, and these have not been measured yet.
+  - id: tsp_01
+    axis: parallel
+    fast: true
+    difficulty: hard
+    # Re-banded from the `hard` fallback in v0.15. Measured 1.00 across all ten
+    # models including qwen3.5-0.8b, so as a `hard` task it was carrying 0.40 of
+    # the band-weighted headline while moving nobody. It is the cheapest item in
+    # the bank (2.6s/trial) and the 0.8B clears it, which is exactly the profile
+    # of a floor sentinel: if parallel tool-calling breaks in a chat template or
+    # a server build, this is what goes red. Kept, at anchor weight.
+    band: anchor
+    what_this_tests: "Four independent tool calls issued together in one turn."
+    failure_mode: "Calls one tool and answers, or spreads the four across turns."
+    prompt: "I need four things at once: the current weather in Lisbon, the current weather in Berlin, the stock price of AAPL, and the stock price of MSFT. Fetch them all."
+    tools: [get_weather, get_stock_price]
+    parallel:
+      - {tool_name: get_weather, required_args: {city: "Lisbon"}}
+      - {tool_name: get_weather, required_args: {city: "Berlin"}}
+      - {tool_name: get_stock_price, required_args: {symbol: "AAPL"}}
+      - {tool_name: get_stock_price, required_args: {symbol: "MSFT"}}
+
+  # --- state: a sweep with a stopping rule ---------------------------------
+  # Every other state task is a uniform sweep — apply the same rule to every
+  # matching row (tst_23, tst_27). This one needs an ordering, a running total
+  # and a stop condition, and the order is the point: processing by id instead
+  # of by descending total spends the budget on a different set of orders and
+  # produces a different refunds list, which expected_state compares
+  # positionally.
+  #
+  # Every refund is under REFUND_LIMIT (50) on purpose. The manager_code policy
+  # gate is a separate construct that ds_* already covers, and colliding the
+  # two here would make a failure ambiguous.
+  - id: tst_41
+    axis: state
+    fast: false
+    difficulty: hard
+    what_this_tests: "Ordering, a running total against a budget, and stopping at the right row."
+    failure_mode: "Refunds in id order, skips past the over-budget order to a cheaper one, or refunds an order that is not shipped."
+    prompt: "The kv key 'refund_budget' holds a whole-dollar budget. Refund the SHIPPED orders, largest total first, refunding each order's full total. Stop as soon as the next refund would take you over the budget — do not skip past it to a smaller one. Do not change any order's status. Then store the number of refunds you issued under the kv key 'refunded_count', and the number of shipped orders you left unrefunded under 'skipped_count'. Never change 'refund_budget'."
+    tools: [list_orders, issue_refund, kv_get, kv_set, kv_list]
+    max_turns: 16
+    initial_state:
+      orders:
+        - {id: 701, customer: "Acme", total: 20, status: "shipped"}
+        - {id: 702, customer: "Globex", total: 45, status: "shipped"}
+        - {id: 703, customer: "Initech", total: 12, status: "shipped"}
+        - {id: 704, customer: "Umbrella", total: 30, status: "shipped"}
+        - {id: 705, customer: "Wayne", total: 88, status: "open"}
+      balance: 1000
+      refunds: []
+      kv:
+        refund_budget: "100"
+    expected:
+      optimal_turns: 7
+      expected_state:
+        orders:
+          - {id: 701, customer: "Acme", total: 20, status: "shipped"}
+          - {id: 702, customer: "Globex", total: 45, status: "shipped"}
+          - {id: 703, customer: "Initech", total: 12, status: "shipped"}
+          - {id: 704, customer: "Umbrella", total: 30, status: "shipped"}
+          - {id: 705, customer: "Wayne", total: 88, status: "open"}
+        # 45 -> 75 -> 95, and 12 more would be 107, so 703 is left alone.
+        balance: 905
+        refunds:
+          - {order_id: 702, amount: 45}
+          - {order_id: 704, amount: 30}
+          - {order_id: 701, amount: 20}
+        kv:
+          refund_budget: "100"
+          refunded_count: 3
+          skipped_count: 1
+
+  # v0.14, probed before banking: LFM2.5-2.6B 0.33 / qwen3.5-4b 1.00 /
+  # qwen3.6-27b 1.00, 3 trials each. Splits weak|mid only — the 4B matches
+  # the 27B here, so this does NOT close the 4B-vs-27B gap.
+  # `band` is unset on purpose; it is assigned from the fleet sweep.
+  - id: tst_51
+    axis: state
+    fast: false
+    difficulty: hard
+    what_this_tests: A move between sections — a delete and an add in one rewrite — while
+      every other line of a file the model must reproduce from what it read survives byte-for-byte.
+    failure_mode: Rewrites the file from memory and drops the Notes section, removes the Notes
+      line that mentions the same alert id, also retires ALRT-211 because it reads as resolved,
+      edits the archived runbook, or appends the Resolved entry without deleting the Active
+      one.
+    prompt: 'Today is 2026-08-25. ALRT-204 has been confirmed fixed.
+
+
+      In the on-call runbook, move ALRT-204 out of "## Active alerts" and into
+
+      "## Resolved", written in the same format the existing Resolved entry uses,
+
+      with today''s date. Add it after the entry already there.
+
+
+      Change nothing else, in that file or any other.'
+    tools:
+    - list_files
+    - read_file
+    - write_file
+    max_turns: 8
+    initial_state:
+      files:
+        ops/runbook.md: '# On-call runbook
+
+
+          ## Active alerts
+
+          - ALRT-204 — checkout latency p99 above 2s
+
+          - ALRT-211 — nightly export failing; mitigation deployed, awaiting confirmation
+
+          - ALRT-217 — disk usage on db-3 above 85%
+
+
+          ## Resolved
+
+          - ALRT-198 — 2026-08-19 — cert renewal loop
+
+
+          ## Notes
+
+          - ALRT-204 was escalated to the payments team on 2026-08-20
+
+          - Rotate the PagerDuty schedule at the end of the month
+
+          '
+        ops/runbook-2026Q2.md: '# On-call runbook (2026 Q2, archived)
+
+
+          ## Active alerts
+
+          - ALRT-204 — checkout latency p99 above 2s
+
+
+          ## Resolved
+
+          - ALRT-150 — 2026-05-02 — stale DNS entry
+
+          '
+        ops/oncall.md: '# On-call rota
+
+
+          - Week of 2026-08-24: Dana
+
+          - Week of 2026-08-31: Marco
+
+          '
+    expected:
+      optimal_turns: 3
+      expected_state:
+        files:
+          ops/runbook.md: '# On-call runbook
+
+
+            ## Active alerts
+
+            - ALRT-211 — nightly export failing; mitigation deployed, awaiting confirmation
+
+            - ALRT-217 — disk usage on db-3 above 85%
+
+
+            ## Resolved
+
+            - ALRT-198 — 2026-08-19 — cert renewal loop
+
+            - ALRT-204 — 2026-08-25 — checkout latency p99 above 2s
+
+
+            ## Notes
+
+            - ALRT-204 was escalated to the payments team on 2026-08-20
+
+            - Rotate the PagerDuty schedule at the end of the month
+
+            '
+      unchanged_paths:
+        files:
+        - ops/runbook-2026Q2.md
+        - ops/oncall.md
+
+  # v0.14, probed before banking: LFM2.5-2.6B 0.00 / qwen3.5-4b 1.00 /
+  # qwen3.6-27b 1.00, 3 trials each. Splits weak|mid only — the 4B matches
+  # the 27B here, so this does NOT close the 4B-vs-27B gap.
+  # `band` is unset on purpose; it is assigned from the fleet sweep.
+  - id: tst_55
+    axis: state
+    fast: false
+    difficulty: hard
+    what_this_tests: 'Two requested changes where the environment shows one is already in
+      place: make the real edit, leave the satisfied one alone, and say so.'
+    failure_mode: Rewrites the healthcheck line anyway (harmless-looking but it is a change
+      that was not needed and the deploy log already records it), changes api replicas instead
+      of worker, or reports both as done without checking.
+    prompt: "Two things for the service config:\n  1. Set the api healthcheck path to /healthz.\n\
+      \  2. Scale worker to 4 replicas.\n\nApply only what is actually needed — if the config\
+      \ already satisfies one of\nthem, leave that part of the file exactly as it is. Change\
+      \ nothing else.\n\nEnd your reply with a line of the exact form:\n\nChanged: <api|worker|both|neither>"
+    tools:
+    - list_files
+    - read_file
+    - write_file
+    max_turns: 8
+    initial_state:
+      files:
+        deploy/config.md: '# Service config
+
+
+          ## api
+
+          - replicas: 3
+
+          - region: eu-west-1
+
+          - healthcheck: /healthz
+
+
+          ## worker
+
+          - replicas: 2
+
+          - region: eu-west-1
+
+          - healthcheck: /healthz
+
+          '
+        deploy/changelog.md: '# Deploy log
+
+
+          - 2026-08-18 — set both healthchecks to /healthz
+
+          - 2026-08-11 — moved worker to eu-west-1
+
+          '
+    expected:
+      optimal_turns: 3
+      expected_state:
+        files:
+          deploy/config.md: '# Service config
+
+
+            ## api
+
+            - replicas: 3
+
+            - region: eu-west-1
+
+            - healthcheck: /healthz
+
+
+            ## worker
+
+            - replicas: 4
+
+            - region: eu-west-1
+
+            - healthcheck: /healthz
+
+            '
+      unchanged_paths:
+        files:
+        - deploy/changelog.md
+      # v1.0: was `contains any [already, no change, unchanged, did not]`, which
+      # graded which of four phrasings the sampler reached for — the same defect
+      # removed from fm_17, tst_35 and mt_11. The construct is "did you notice
+      # that one requirement was already satisfied", and a fixed answer channel
+      # tests exactly that with no vocabulary in the way. Regex rather than
+      # ends_with so a trailing period does not decide the score. api's
+      # healthcheck is already /healthz in the initial state, so `worker` is the
+      # only correct answer.
+      final_text_checks:
+      - {type: regex, pattern: "Changed:\\s*worker\\b"}
+      - {type: not_regex, pattern: "Changed:\\s*(api|both|neither)\\b"}
+
+  # v0.14, probed before banking: LFM2.5-2.6B 0.00 / qwen3.5-4b 1.00 /
+  # qwen3.6-27b 1.00, 3 trials each. Splits weak|mid only — the 4B matches
+  # the 27B here, so this does NOT close the 4B-vs-27B gap.
+  # `band` is unset on purpose; it is assigned from the fleet sweep.
+  - id: tst_57
+    axis: state
+    fast: false
+    difficulty: hard
+    what_this_tests: 'Reading the whole queue before writing anything: requests apply in timestamp
+      order, not filename order, and one of them cancels another that sorts earlier.'
+    failure_mode: Applies the requests in filename order, misses that r-003 cancels r-001
+      and leaves widget-a at 32, or applies the cancel as another adjustment.
+    prompt: 'The queue directory holds stock adjustment requests. Apply them to the ledger''s
+
+      "## Counts" section in the order of the `time` field each request carries.
+
+
+      A request with a `cancels:` field withdraws the request it names — that one
+
+      must not be applied at all.
+
+
+      Write the resulting counts back to the ledger, same format, and change
+
+      nothing else. Leave the request files alone.'
+    tools:
+    - list_files
+    - read_file
+    - write_file
+    max_turns: 12
+    initial_state:
+      files:
+        stock/ledger.md: '# Stock ledger
+
+
+          ## Counts
+
+          - widget-a: 40
+
+          - widget-b: 25
+
+          - widget-c: 12
+
+          '
+        queue/r-001.md: 'id: r-001
+
+          time: 2026-08-25 10:05
+
+          adjust: widget-a -8
+
+          '
+        queue/r-002.md: 'id: r-002
+
+          time: 2026-08-25 09:10
+
+          adjust: widget-b +15
+
+          '
+        queue/r-003.md: 'id: r-003
+
+          time: 2026-08-25 14:20
+
+          cancels: r-001
+
+          '
+        queue/r-004.md: 'id: r-004
+
+          time: 2026-08-25 11:40
+
+          adjust: widget-c -10
+
+          '
+    expected:
+      optimal_turns: 6
+      expected_state:
+        files:
+          stock/ledger.md: '# Stock ledger
+
+
+            ## Counts
+
+            - widget-a: 40
+
+            - widget-b: 40
+
+            - widget-c: 2
+
+            '
+      unchanged_paths:
+        files:
+        - queue/r-001.md
+        - queue/r-002.md
+        - queue/r-003.md
+        - queue/r-004.md
+
+  # === axis: state, continued — the document-edit invariant ==================
+  # Ten-model panel, k=3, at max_tokens 12288:
+  #   qwen3.5-0.8b 0/3 · LFM2.5-2.6B 0/3 · qwen3.5-4b 1/3 · LFM2.5-8B-A1B 0/3
+  #   gemma-4-12b 3/3 · qwen3.6-27b 3/3 · qwen3.6-27b-thinking-cap 3/3
+  #   qwen3.8-27b 3/3 · gemma-4-31b 3/3 · ornith-1.5-35b 3/3
+  # A clean step between 8B and 12B, monotone, no inversion. Below the step the
+  # failures are consistent and diagnostic: `table_row_position` (appending at
+  # the bottom of a date-DESCENDING table instead of the top) on every model,
+  # plus `section_contains` (a markdown link where the file uses [[wikilinks]])
+  # on the three weakest. qwen3.5-4b sits on the boundary, missing only the row
+  # position.
+  #
+  # WHAT THIS TASK IS NOT. It was banked claiming a 12B|27B split carried by a
+  # standing frontmatter obligation ("always set `updated:` to today"). Both
+  # halves of that were wrong, and the full panel is what showed it:
+  #
+  #   1. The 12B|27B reading was an artifact of a 6144 token cap. gemma-4-12b
+  #      went 0/3 -> 1/3 -> 3/3 as the budget rose to 12288 without ever
+  #      truncating; it was budget-starved, not incapable. The real boundary is
+  #      8B|12B.
+  #   2. The frontmatter check did not measure capability. Every failure above
+  #      the step was that check and nothing else — ornith-1.5-35b missed it 3/3
+  #      while its document work was flawless, gemma never missed it, qwen was
+  #      inconsistent. It is a per-model habit, and grading it put a 35B below a
+  #      12B. Dropping it turns a scrambled top into a clean step (recomputed
+  #      offline from the stored per-check breakdown, no re-run needed).
+  #
+  # Keep the standing-obligation idea, but not here and not as a graded check
+  # until something shows it tracks size. mt_25, the bank's other rule-retention
+  # task, is likewise inverted (-1.00 from 12B to 27B).
+  #
+  # Graded on invariants rather than bytes: `expected_state` failed all three
+  # trio models on this task because they also (correctly) updated neighbouring
+  # sections, which the broad instruction invites. See `file_checks`.
+  - id: pf_01
+    axis: state
+    fast: false
+    difficulty: hard
+    what_this_tests: Inserting a row at the top of a date-descending markdown table, and honouring a standing
+      frontmatter obligation, from a broad instruction that names neither.
+    failure_mode: Appends the row at the bottom, inserts it above the separator, rewrites the separator
+      or reflows the existing rows, emits a markdown link instead of a wiki link, leaves `updated:` stale,
+      or files the meeting as a bullet in another section.
+    # Sized for the file, not for difficulty: the model passes the whole
+    # ~70-line document back through write_file. The tools module's 2048 cap
+    # truncates that outright. 6144 was still too tight — ornith-1.5-35b
+    # truncated 2 of 3 trials at 6317 completion tokens, and a truncated trial
+    # is DROPPED as unscorable, so that model's record here was one trial. A
+    # verbose reasoner has to be measured on what it wrote, not on where the
+    # cap fell.
+    max_tokens: 12288
+    prompt: "Today is 2026-08-24.\n\nI met Dana this week. Go through the note below and bring her person\
+      \ file up\nto date, following the conventions the file already uses.\n\nDaily note — 2026-08-21\n\
+      ----------------------\n- Payments review with Dana, Marco and Priya\n  Summary: Agreed to delay the\
+      \ gateway migration until the reconciliation\n  fix lands.\n  Marco walked through the migration plan\
+      \ drafted back on 2026-08-12. Priya\n  flagged that the reconciliation job still double-counts refunds\
+      \ when a\n  chargeback lands in the same window. Dana raised the provider's month-end\n  change freeze\
+      \ starting 2026-08-27. Marco pushed for shipping behind a flag\n  but did not carry the room. Dana\
+      \ will own it and report back on 2026-08-29.\n- Coffee with Sam about the Q3 capacity plan (nothing\
+      \ to record for Dana)\n"
+    tools:
+    - list_files
+    - read_file
+    - write_file
+    max_turns: 10
+    initial_state:
+      files:
+        people/dana.md: "---\ntype: person\nteam: payments\nupdated: 2026-08-14\n---\n\n# Dana\n\n## Snapshot\n\
+          \nEngineering lead for payments. Joined in 2024. Prefers written proposals\nahead of a decision\
+          \ meeting, and will say so if she does not get one.\n\n## Threads\n\n- Gateway migration\n  -\
+          \ waiting on the reconciliation fix\n- Team growth\n  - two open reqs, neither filled\n\n## Commitments\n\
+          \n- Reconciliation fix scoped by end of Q3 — open\n- Vendor renewal signed off — done\n\n## Meetings\n\
+          \n| Meeting | Summary | Date | Notes |\n| --- | --- | --- | --- |\n| Vendor review | Renewed the\
+          \ contract for twelve months. | 2026-08-07 | [[2026-08-07]] |\n| Capacity sync | Deferred the\
+          \ cluster resize to Q4. | 2026-07-31 | [[2026-07-31]] |\n| Incident retro | Walked the 503 spike\
+          \ back to a cache warm-up typo. | 2026-07-24 | [[2026-07-24]] |\n| Roadmap check | Agreed payments\
+          \ work lands before search work. | 2026-07-17 | [[2026-07-17]] |\n| Hiring sync | Opened a second\
+          \ req for the reconciliation work. | 2026-07-10 | [[2026-07-10]] |\n| Budget review | Held the\
+          \ infra line flat for the half. | 2026-07-03 | [[2026-07-03]] |\n| Gateway kickoff | Picked the\
+          \ phased migration over a big-bang cut. | 2026-06-26 | [[2026-06-26]] |\n| Q2 retro | Named review\
+          \ latency as the biggest drag. | 2026-06-19 | [[2026-06-19]] |\n| Vendor intro | First call with\
+          \ the new payments provider. | 2026-06-12 | [[2026-06-12]] |\n| Onboarding sync | Handed over\
+          \ the reconciliation runbook. | 2026-06-05 | [[2026-06-05]] |\n| Planning kickoff | Set the Q3\
+          \ goals for the payments team. | 2026-05-29 | [[2026-05-29]] |\n| Skip level | Raised the on-call\
+          \ load as the top concern. | 2026-05-22 | [[2026-05-22]] |\n\n## Open questions\n\n- Does the\
+          \ reconciliation fix need a provider-side change as well?\n- Who covers payments on-call while\
+          \ the second req is open?\n"
+        people/marco.md: '---
+
+          type: person
+
+          team: payments
+
+          updated: 2026-08-19
+
+          ---
+
+
+          # Marco
+
+
+          ## Snapshot
+
+
+          Staff engineer on payments. Runs the gateway migration.
+
+
+          ## Meetings
+
+
+          | Meeting | Summary | Date | Notes |
+
+          | --- | --- | --- | --- |
+
+          | Gateway kickoff | Picked the phased migration. | 2026-06-26 | [[2026-06-26]] |
+
+          | Vendor review | Renewed the contract. | 2026-08-07 | [[2026-08-07]] |
+
+          '
+        people/priya.md: '---
+
+          type: person
+
+          team: payments
+
+          updated: 2026-08-11
+
+          ---
+
+
+          # Priya
+
+
+          ## Snapshot
+
+
+          Reconciliation owner. Flags refund edge cases early.
+
+          '
+    expected:
+      optimal_turns: 4
+      file_checks:
+        people/dana.md:
+        # No `frontmatter` check here, deliberately — see the note above the task.
+        - type: table_wellformed
+          section: '## Meetings'
+        - type: table_rows_preserved
+          section: '## Meetings'
+          key_column: 0
+        - type: table_row_position
+          section: '## Meetings'
+          contains: Payments review
+          index: 0
+        - type: section_contains
+          section: '## Meetings'
+          value: '[[2026-08-21]]'
+        - type: bullets_wellformed
+          section: '## Threads'
+        - type: bullets_wellformed
+          section: '## Commitments'
+        - type: lines_preserved
+          section: '## Open questions'
+      # Told to the JUDGE, not just to the reader. The frontmatter check was
+      # removed from this task after the ten-model panel showed it measured a
+      # per-model habit rather than capability and inverted the ranking. The
+      # first judged run then demoted a qwen3.6-27b trial for exactly that
+      # date, re-deriving the requirement from the prompt. A rubric this bank
+      # narrowed on purpose has to be visible to the judge, or it is not
+      # actually narrowed.
+      not_graded:
+      - The `updated:` date in the YAML frontmatter. Any value is acceptable,
+        including a stale one; do not lower the score for it.
+      unchanged_paths:
+        files:
+        - people/marco.md
+        - people/priya.md
+    band: hard

@@ -1,0 +1,202 @@
+module: multi_turn_if
+# Multi-IF / IFEval-over-dialogue: a conversation where verifiable constraints
+# ACCUMULATE. A rule introduced in an early turn must still hold in every later
+# turn — exposing instruction-forgetting (context rot), the failure where a small
+# model obeys turn 1 then drops the rule two turns later. Graded by the same
+# deterministic constraint engine as the format module; success is binary (every
+# turn satisfies its full accumulated rule set). All hard tier.
+tasks:
+  # --- 5 turns: a banned word, then a later turn that all but demands it -----
+  # This tests the harder
+  # half of Multi-IF: a NEGATIVE rule set early, then a turn whose natural
+  # phrasing violates it (three more bugs reported) plus arithmetic over the
+  # list the model itself built. Nothing here is scored by the judge.
+  - id: mt_11
+    fast: false
+    difficulty: hard
+    band: mid
+    prompt: "5-turn release-notes dialogue: a banned word set in turn 1, later tempted directly."
+    conversation:
+      - prompt: "You are my release-notes assistant. Draft notes for v2.1, which fixes a crash on export. Two rules from now on: never use the word 'bug' — write 'defect' instead — and keep every reply at 80 words or fewer."
+        constraints:
+          - {type: not_contains, value: "bug"}
+          - {type: max_words, value: 80}
+      - prompt: "Add a 'Known issues' section as a bulleted list with at least two bullets. Keep every earlier rule."
+        constraints:
+          - {type: min_bullets, value: 2}
+      # "Give me the notes again" is load-bearing, added in v1.0. Without it
+      # this turn is a pure meta-instruction, and the accumulated min_bullets
+      # rule then grades whether the model chose to re-emit the document or to
+      # acknowledge the new rule. qwen3.8-27b answered "RELEASE: Understood.
+      # All future replies will begin with this prefix. Previous rules remain
+      # in effect: use 'defect' instead of the forbidden term, replies stay
+      # under 80 words, and known issues appear as a bulleted list" — it
+      # recited every rule it was tracking, which is the capability under
+      # test, and scored 0.75 for not pasting the notes underneath. qwen3.5-4b
+      # re-dumped the document and scored 1.00. That is the fm_17 defect: the
+      # sampler's conversational habit, not instruction retention. mt_25 turn
+      # 4 already words it this way.
+      - prompt: "From now on start every reply with 'RELEASE:'. Give me the notes again with that applied, keeping everything else."
+        constraints:
+          - {type: starts_with, value: "RELEASE:"}
+      - prompt: "QA just filed three more bugs in the login flow. Fold them into the known issues and tell me the total number of known issues now listed."
+        constraints:
+          # Two from turn 2 plus the three from this turn. The word 'bug' is in
+          # the question itself, which is the point: the rule was set three
+          # turns ago and echoing the prompt breaks it. Either spelling is
+          # accepted because this constraint accumulates into turn 5, and
+          # pinning the digit would make the final reply a coin flip.
+          - {type: contains, any: ["5", "five"]}
+      # Constraints accumulate, so turn 4's count check applies here too. Ask
+      # for the count again rather than leaving it implicit: a one-off answer
+      # that silently becomes a permanent rule fails models for forgetting
+      # something they were never told to keep.
+      - prompt: "Give me the final notes keeping every rule, state how many known issues they list, and end your reply with the exact word 'Shipped.'"
+        constraints:
+          - {type: ends_with, value: "Shipped."}
+
+  # --- 5 turns: a rule the user CANCELS partway through ---------------------
+  # Every other task in this module only ever adds or tightens rules, so
+  # accumulation models them. Retraction is the harder half of Multi-IF and
+  # was unexpressible until v0.13 added `revokes` — a turn-1 not_contains used
+  # to hold for the rest of the dialogue no matter what the user said next.
+  #
+  # Turn 3 both revokes the ban and REQUIRES the word from then on, so a model
+  # that keeps avoiding it fails just as surely as one that never obeyed. That
+  # symmetry is the point: over-applying a cancelled rule has to cost
+  # something, or the task only measures obedience.
+  #
+  # `band` is deliberately unset on every task added in v0.13: bands are
+  # assigned from measurement, and these have not been measured yet.
+  - id: mt_21
+    fast: false
+    difficulty: hard
+    what_this_tests: "Dropping a standing rule when the user cancels it, and keeping the rest."
+    failure_mode: "Keeps saying 'defect' after the ban is lifted, or drops the other rules along with the cancelled one."
+    prompt: "5-turn release-notes dialogue where turn 3 cancels a rule set in turn 1."
+    conversation:
+      - prompt: "You are my release-notes assistant. Draft notes for v3.0, which fixes a memory leak. Three rules from now on: never use the word 'bug' — write 'defect' instead; keep every reply to 70 words or fewer; and end every reply with the exact line 'EOM'."
+        constraints:
+          - {type: not_contains, value: "bug", id: no-bug}
+          - {type: max_words, value: 70}
+          - {type: ends_with, value: "EOM"}
+      - prompt: "Add a 'Known issues' section as a bulleted list with at least two bullets. Keep every earlier rule."
+        constraints:
+          - {type: min_bullets, value: 2}
+      # Same repair as mt_11 turn 3: the turn revokes a rule and introduces
+      # its replacement, so without an explicit request for the artifact the
+      # accumulated min_bullets grades an acknowledgement against a document.
+      - prompt: "Forget the wording rule — 'bug' is fine now, and I want you to use it from here on instead of 'defect'. Give me the notes again with that change, every other rule still stands."
+        revokes: [no-bug]
+        constraints:
+          - {type: contains, value: "bug"}
+      - prompt: "QA filed two more issues in the export flow. Fold them into the known issues, keeping every rule that is still in force."
+        constraints:
+          - {type: min_bullets, value: 4}
+      - prompt: "Give me the final notes, keeping every rule that is still in force."
+        constraints: []
+
+  # --- 4 turns: an earlier fact is corrected, not appended to ---------------
+  # Where mt_11 accumulates rules, this one adds a CORRECTION: turn 4 replaces
+  # an input from turn 1, so the total has to be worked out again from the
+  # corrected figure rather than patched. (mt_12 held the count-across-turns
+  # construct under a no-numerals rule and was retired in v0.15 at +0.42.)
+  #
+  # Turn 2 halves the delivery, and that is what makes the task discriminate.
+  # With a purely additive chain, applying the correction as a delta to the
+  # last total gives the same answer as recomputing, so the distinction the
+  # task claims to measure would not exist. Halving breaks the linearity:
+  # recomputing gives nine, patching by the -4 delta gives seven.
+  #
+  # Each turn revokes the previous turn's count check, because that total has
+  # stopped being the answer — accumulating them would demand every superseded
+  # figure reappear in every later reply.
+  #
+  # The number words are chosen so none is a substring of another: with
+  # `contains` matching substrings, "nine"/"nineteen" would make the earlier
+  # check pass vacuously on the later turn.
+  - id: mt_23
+    fast: true
+    difficulty: hard
+    what_this_tests: "Recomputing a derived total after an earlier input is corrected."
+    failure_mode: "Applies the correction as a delta to the last total, or keeps quoting the superseded figure."
+    prompt: "4-turn inventory dialogue where the opening quantity turns out to be wrong."
+    conversation:
+      - prompt: "You are my inventory assistant. We received 16 boxes this morning. One rule from now on: never write a numeral — spell every number out as a word."
+        constraints:
+          - {type: not_regex, pattern: "[0-9]"}
+          - {type: contains, value: "sixteen", id: count-1}
+      - prompt: "This afternoon we shipped out half of what arrived this morning, rounded down. How many boxes are left? Keep the rule."
+        revokes: [count-1]
+        constraints:
+          - {type: contains, value: "eight", id: count-2}
+      - prompt: "Another 3 boxes arrived. Give me the new total, and from now on also end every reply with the word 'Counted.'"
+        revokes: [count-2]
+        constraints:
+          - {type: contains, value: "eleven", id: count-3}
+          - {type: ends_with, value: "Counted."}
+      - prompt: "Correction: this morning's delivery was 12 boxes, not 16. Work the current total out again from the corrected figure and give me just that total, keeping every rule."
+        revokes: [count-3]
+        constraints:
+          - {type: contains, value: "nine"}
+  - id: mt_25
+    fast: false
+    difficulty: hard
+    what_this_tests: "Holding a turn-1 rule across seven turns, including one that baits it."
+    failure_mode: "Echoes the banned word straight out of turn 5's prompt, or drops the prefix once the replies get long."
+    prompt: "7-turn standup dialogue whose opening rules are never restated."
+    conversation:
+      - prompt: "You are my standup assistant. Summarize this: 'The API team shipped caching; mobile is held up waiting on review.' Two rules from now on: start every reply with 'STANDUP:' and never use the word 'blocker' — say 'waiting on' instead."
+        constraints:
+          - {type: starts_with, value: "STANDUP:"}
+          - {type: not_contains, value: "blocker"}
+          - {type: contains, value: "waiting on"}
+      - prompt: "Add a line for risks."
+        constraints:
+          - {type: contains, value: "risk", id: risk-line}
+      - prompt: "Turn it into a bulleted list with at least three bullets."
+        constraints:
+          - {type: min_bullets, value: 3, id: bullets}
+      # The word limit is paired with a request for the list, deliberately. The
+      # first version of this turn only announced the rule, and every model
+      # answered "Understood, I'll keep replies under 70 words" — which is the
+      # right answer to what was asked, and failed the accumulated bullet and
+      # content checks it had no reason to satisfy. A turn that sets a rule and
+      # requests nothing cannot be graded on the rules it inherits.
+      - prompt: "From now on keep every reply to 70 words or fewer. Give me the list again within that limit."
+        constraints:
+          - {type: max_words, value: 70}
+      - prompt: "Design reports a blocker on infra for the migration. Fold that into the list."
+        revokes: [bullets]
+        constraints:
+          - {type: min_bullets, value: 4, id: bullets}
+      # A resolved item leaves the list, so the bullet floor comes back down and
+      # the risk line stops being required — the risk this dialogue named WAS
+      # the review delay. Holding both at their turn-5 values scored a model
+      # that correctly pruned a finished item as having forgotten the rule,
+      # which is the opposite of what this module measures.
+      - prompt: "Mobile's review came through this morning. Update the list."
+        revokes: [bullets, risk-line]
+        constraints:
+          - {type: min_bullets, value: 3, id: bullets}
+          # v0.15: until this check, turn 6 graded only the bullet count, so a
+          # model could carry mobile's stale status forward untouched and still
+          # score 1.00 — the correction this task exists to test went ungraded.
+          # The judge caught it on LFM2.5-8B-A1B where the deterministic scorer
+          # could not.
+          #
+          # The pattern was chosen against the 36 stored trials rather than
+          # guessed: "held up" (the wording turn 1 supplies) appears in none of
+          # them, while every model that fails writes literally "Mobile is
+          # waiting on review". Every model that updates says something else —
+          # "review is complete", "review came through", "review cleared",
+          # "now approved" — so no correct rendering is caught. It fires on
+          # LFM2.5-8B-A1B 3/3 and qwen3.5-0.8b 2/3, and on nothing else.
+          #
+          # Accumulated, so it holds at turn 7 too: the final standup may not
+          # reinstate the stale status either.
+          - {type: not_regex, pattern: '\bmobile\b[^\n]*waiting on review',
+             id: mobile-updated}
+      - prompt: "Give me the final standup, keeping every rule, and end your reply with the exact word 'Filed.'"
+        constraints:
+          - {type: ends_with, value: "Filed."}

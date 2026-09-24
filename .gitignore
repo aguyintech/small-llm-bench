@@ -1,0 +1,50 @@
+# Environment
+.env
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+
+# Benchmark output. `results/reference/` is the exception: it holds the
+# published panel a user compares their own run against, so it ships. Judged
+# files are ~1 MB each with `raw_api_responses` empty (they are only populated
+# by --save-responses, which the reference runs must not use).
+# `results/*` rather than `results/`: git does not descend into an excluded
+# directory, so a negation under it can never match.
+results/*
+!results/reference/
+
+# Local implementation plans
+plans/
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
+
+# Local scratch clones
+temp/
+
+# scratch space for one-off bank surgery
+.scratch/
+
+# Recorded Hermes sessions used as reference evidence. Contain vault paths,
+# colleague names, meeting content and pricing — must not reach a public repo.
+trajectories_for_reference/
+
+# Local research scratch — notes, papers, benchmark spelunking. Not shipped.
+research/
+
+# Per-user Claude Code settings.
+.claude/settings.local.json
+
+# Run leftovers that must never ship, even from results/reference/: the
+# crash-recovery sidecar of an unfinished run, and hand-made backups.
+*.partial.jsonl
+*.bak

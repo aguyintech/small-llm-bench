@@ -1,0 +1,78 @@
+# Retired tasks, kept ONLY as test fixtures — NOT part of the bank.
+#
+# v0.15 cut the bank from 59 tasks to 40 (see CHANGELOG). Nineteen tasks left
+# because they carried no ranking signal, but a large part of the scorer test
+# suite used them as fixtures: `tl_26` pins the derived-figure grading path,
+# `tl_33` and `tst_10` pin the waste budget, `ds_14`/`ds_15` pin the
+# ask-vs-answer contrast, `adv_11` pins over-refusal. Deleting them would have
+# deleted that coverage with them.
+#
+# So the definitions live on here, unchanged, and the tests load THIS directory
+# instead of tasks/. Nothing here is ever run against a model or counted in a
+# score: `load_tasks(..., tasks_dir=retired_bank_dir)` is the only reader.
+
+module: code
+tasks:
+  - id: cd_02
+    repair_attempts: 3
+    fast: false
+    difficulty: easy
+    band: anchor
+    prompt: "Write a Python function `binary_search(nums, target)` that returns the index of target in a sorted list, or -1 if not found, using binary search. Respond with a single Python code block containing only the function."
+    function_name: binary_search
+    test_cases:
+      - {args: [[1, 3, 5, 7, 9], 5], expected: 2}
+      - {args: [[1, 3, 5], 4], expected: -1}
+      - {args: [[], 1], expected: -1}
+      - {args: [[2], 2], expected: 0}
+      - {args: [[1, 2, 3, 4], 4], expected: 3}
+  - id: cd_34
+    repair_attempts: 1
+    fast: false
+    difficulty: hard
+    what_this_tests: "Building stateful behaviour to a written interface, one shot."
+    failure_mode: "Counts denied calls against the limit, shares one window across keys, or treats the window boundary as inclusive."
+    prompt: |
+      Write a class `SlidingWindowLimiter` implementing a per-key sliding-window
+      rate limiter.
+
+      Interface, which is exactly how it will be used:
+
+          limiter = SlidingWindowLimiter(limit=3, window_seconds=10)
+          limiter.allow("api", at=0)   # -> True or False
+
+      Rules:
+
+      - `allow(key, at)` returns True when FEWER than `limit` previously
+        ALLOWED calls for that same key have a timestamp STRICTLY GREATER than
+        `at - window_seconds`. Otherwise it returns False.
+      - A call that returns True is recorded. A call that returns False is not
+        recorded and must not count against any later call.
+      - Each key has its own independent window.
+      - `at` is an integer number of seconds and never goes backwards.
+
+      Respond with a single Python code block containing the class plus any
+      imports it needs.
+    function_name: check_limiter
+    support_code: |
+      def check_limiter(events, limit=3, window_seconds=10):
+          """Drive a fresh limiter through (timestamp, key) events."""
+          limiter = SlidingWindowLimiter(limit=limit, window_seconds=window_seconds)
+          return [limiter.allow(key, at=at) for at, key in events]
+    test_cases:
+      # Saturate one key, then let the window slide past the oldest call.
+      - args: [[[0, "a"], [1, "a"], [2, "a"], [3, "a"], [9, "a"], [11, "a"], [12, "a"]]]
+        expected: [true, true, true, false, false, true, true]
+      # Two keys at the same instant: the windows must not be shared.
+      - args: [[[0, "x"], [0, "y"], [0, "x"], [0, "x"], [0, "x"]]]
+        expected: [true, true, true, true, false]
+      # The boundary. At t=10 the call at t=0 is exactly window_seconds old and
+      # has therefore already left the window, so this is allowed.
+      - args: [[[0, "a"], [1, "a"], [2, "a"], [10, "a"], [11, "a"]]]
+        expected: [true, true, true, true, true]
+    regression_cases:
+      # Never reaching the limit, and a limit of one.
+      - args: [[[0, "a"], [100, "a"], [200, "a"]]]
+        expected: [true, true, true]
+      - args: [[[0, "a"], [1, "a"]], 1, 10]
+        expected: [true, false]

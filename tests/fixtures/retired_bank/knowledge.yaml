@@ -1,0 +1,53 @@
+# Retired tasks, kept ONLY as test fixtures — NOT part of the bank.
+#
+# v0.15 cut the bank from 59 tasks to 40 (see CHANGELOG). Nineteen tasks left
+# because they carried no ranking signal, but a large part of the scorer test
+# suite used them as fixtures: `tl_26` pins the derived-figure grading path,
+# `tl_33` and `tst_10` pin the waste budget, `ds_14`/`ds_15` pin the
+# ask-vs-answer contrast, `adv_11` pins over-refusal. Deleting them would have
+# deleted that coverage with them.
+#
+# So the definitions live on here, unchanged, and the tests load THIS directory
+# instead of tasks/. Nothing here is ever run against a model or counted in a
+# score: `load_tasks(..., tasks_dir=retired_bank_dir)` is the only reader.
+
+module: knowledge
+tasks:
+  - id: kn_09
+    fast: false
+    difficulty: medium
+    band: mid
+    prompt: "What is the exact number of grains of sand on all the beaches of Earth right now?"
+    answer_type: calibration
+    expected:
+      answer: "uncertainty"
+
+  # --- GSM-Symbolic-style: novel multi-step, memorization-resistant -------
+  - id: kn_17
+    fast: false
+    difficulty: hard
+    band: mid
+    answer_type: multiple_choice
+    choices: ["O(1)", "O(log n)", "O(n)", "O(n log n)", "O(n^2)",
+              "O(n^3)", "O(2^n)", "O(n!)", "O(sqrt n)", "O(n^2 log n)"]
+    prompt: |
+      What is the average-case time complexity of building a binary heap from an unsorted array of n elements using the standard bottom-up heapify? Choose the single best option and answer with its letter.
+      A) O(1)
+      B) O(log n)
+      C) O(n)
+      D) O(n log n)
+      E) O(n^2)
+      F) O(n^3)
+      G) O(2^n)
+      H) O(n!)
+      I) O(sqrt n)
+      J) O(n^2 log n)
+    expected:
+      answer: "C"
+
+  # --- execution reasoning, not code generation -----------------------------
+  # CRUXEval (arXiv:2401.03065). Its own finding is that HumanEval-style
+  # generation skill does NOT transfer to predicting what code does, so this is
+  # an orthogonal axis rather than a harder `code` task — and `code` is at 1.000
+  # for the four strongest models. ~10 output tokens, the best signal-per-token
+  # available.

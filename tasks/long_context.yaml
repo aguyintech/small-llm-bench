@@ -1,0 +1,193 @@
+module: long_context
+# Needle-in-a-haystack + RULER/NoLiMa-style long-context reasoning. Haystacks are
+# built deterministically at runtime (see modules/long_context.py); specs only.
+# All hard tier. Lengths capped for the time budget.
+tasks:
+
+  # --- multi-key: target needle among near-miss distractors, incl. a stale
+  # value trap (same entity+field, different value) ------------------------
+  - id: lc_08
+    fast: true
+    # 16384, up from the long_context default of 12288, which Ling-3.0-Tiny
+    # hit on one of three trials.
+    max_tokens: 16384
+    difficulty: hard
+    band: mid
+    answer_type: numeric
+    haystack:
+      type: multi_key
+      filler_tokens: 16000
+      needle: "The Oslo datacenter access code is 7284."
+      distractors:
+        - "The Oslo datacenter badge code is 9931."
+        - "The Oslo warehouse access code is 4416."
+        - "The Osaka datacenter access code is 7719."
+        - "The Oslo datacenter access code was 5127 until it was rotated last year."
+      position: 0.35
+    prompt: "Using only the document above, what is the CURRENT Oslo datacenter access code? End your reply with the number."
+    constraints:
+      # The prompt dictates where the answer goes; grading it here keeps
+      # that instruction from being decoration only the judge notices.
+      - {type: ends_with_number}
+    expected: {answer: 7284, exact: true}
+
+  # --- 32k: deep placement, where lost-in-the-middle bites hardest ---------
+  # lc_08 sits at 0.35 depth; this one sits at 0.75 with the same stale-value
+  # trap, so a model that only skims the opening pages surfaces the old code.
+  - id: lc_12
+    fast: true
+    difficulty: hard
+    band: mid
+    answer_type: factual
+    what_this_tests: "Retrieval that needs a world-knowledge hop instead of a keyword match."
+    failure_mode: "Answers the person tied to the literal word in the question, or says the document doesn't say."
+    haystack:
+      type: no_overlap
+      filler_tokens: 4000
+      needle: "Yuki has worked beside the Semper Opera House for over a decade."
+      distractors:
+        - "Mateo has worked beside the Sagrada Familia since 2019."
+        - "Ana's desk looks out over the Charles Bridge."
+        - "The Dresden sales office was closed in 2019 and never reopened."
+        - "Priya transferred to the Leipzig depot last spring."
+      position: 0.35
+    prompt: "Using only the document above, which person works in Dresden? Answer with just the person's name."
+    expected:
+      answer: "Yuki"
+      accept: ["yuki"]
+
+  # --- multi-hop chain where one link is stated only by association ---------
+  # This combines the module's two strongest constructs: a multi-link chain
+  # (lc_45, retired in v0.15 — it fell to +0.58 once a 12-model panel included
+  # two MoEs) and a needle sharing no words with the question (lc_12, +0.83).
+  # WEST depends on a depot count that no line in the document ties to
+  # the word in the chain, so the model has to make the NoLiMa hop (the Little
+  # Mermaid stands in Copenhagen) before the arithmetic can even start.
+  #
+  # Every wrong path lands on a distinct number, which keeps the failure
+  # readable: Oslo gives 63, Stockholm 75, the pre-consolidation Copenhagen
+  # figure 68, and dropping the hop entirely leaves the chain unfinished.
+  - id: lc_57
+    fast: false
+    difficulty: hard
+    answer_type: numeric
+    what_this_tests: "A world-knowledge hop embedded inside a four-link variable chain at 32k."
+    failure_mode: "Picks a depot count from the wrong city, or the superseded Copenhagen figure."
+    haystack:
+      type: multi_hop
+      filler_tokens: 32000
+      chain:
+        - "Variable NORTH is set to 21."
+        - "Variable EAST is set to NORTH times 4."
+        - "Variable WEST is set to EAST minus the number of depots run by the office in the city where the Little Mermaid statue stands."
+        - "Variable SOUTH is set to WEST plus 9."
+      latent:
+        - "The Copenhagen office runs 12 depots."
+      distractors:
+        - "The Oslo office runs 30 depots."
+        - "The Stockholm office runs 18 depots."
+        - "The Copenhagen office ran 25 depots before the 2024 consolidation."
+    prompt: "Using only the document above, what is the final value of SOUTH? Follow the variable definitions in order, and use each office's current depot count rather than any superseded one. End your reply with the number."
+    constraints:
+      - {type: ends_with_number}
+    expected: {answer: 81, exact: true}
+
+  # === Banked v1.0 — the meeting-transcript axis =============================
+  # Replaces lc_31 (retired same release). WHY THIS AXIS EXISTS: every other
+  # long_context construct is LEXICAL — the answer is a string literally in the
+  # document — and qwen3.5-4b passes all of them. Five were measured against it
+  # on 2026-09-07/08 and it went 3/3 on every one: depth plus needle entropy at
+  # 54k, depth alone, interference with a single selection, interference with
+  # find-all/filter/order/select, and retroactive interference. Locating a
+  # record is what a 4B is good at. Here no line states the answer.
+  #
+  # MEASURED, k=3, max_tokens 16384, five models, two families:
+  #   qwen3.5-4b   0.50 (1/2 — one trial excluded `incomplete`)
+  #   qwen3.5-9b   0.67
+  #   gemma-4-12b  0.67
+  #   qwen3.6-27b  1.00
+  #   gemma-4-31b  1.00
+  # Monotone across all five, which no other candidate in that sweep achieved
+  # (tst_65, tst_67, tst_69 and fm_74 all ranked the 12B below the 4B). An
+  # earlier k=5 trio run read 0.40/0.60/1.00 and ACCEPTs under the k=5 rule.
+  #
+  # WHAT IS NOT ESTABLISHED, recorded rather than buried: at these n no leg is
+  # significant — weak vs mid p=0.52, mid vs strong p=0.46, weak vs strong
+  # p=0.083. tst_63's mid-vs-strong leg is p=0.00071 for scale. This is banked
+  # on a monotone ladder and a clean mechanism, NOT on a proven separation.
+  # The fleet sweep is what turns it into a claim; re-read it there before
+  # quoting a band.
+  #
+  # THE DIAGNOSTIC IS EXACT: citing the revert rule and answering correctly are
+  # the same event in 15 of 16 probe trials. Every miss declared Marco (whose
+  # offer was accepted then withdrawn) or Priya (most airtime, ruled herself
+  # out). One 4B trial found the rule, spent 16,669 tokens and still said
+  # Marco — a reasoning failure, which is the axis.
+  #
+  # COST: 1.9-2.5 min/model on four of the five, but 8.6 on gemma-4-12b, which
+  # generates 9,000-10,500 tokens where the 27B needs 2,280. Retiring lc_31
+  # (1.73 min) does not fully pay for that; the bank moves from 45.0 to about
+  # 46.8 min/model. If runtime is reopened, the honest next partners are lc_08
+  # and lc_57, neither of which carries signal lc_12 does not already have.
+  #
+  # `fast: false` deliberately — the fast profile is a smoke test and this is
+  # the most expensive task in the module.
+  # ==========================================================================
+  - id: lc_67
+    fast: false
+    difficulty: hard
+    answer_type: factual
+    # gemma-4-12b generated 10,336 completion tokens on one cycle-1 trial
+    # against the long_context module default of 12,288. A trial that crosses
+    # that cap is classed `incomplete` and EXCLUDED rather than failed, which is
+    # what made fm_74 unreadable and cost tst_63 a whole cycle.
+    #
+    # 16384, not the 20480 first set here: the read timeout is derived as
+    # cap/20 tok/s + 120s, so 20480 would ask for 1144s and gemma-4-31b at its
+    # measured 20.8 tok/s floor would genuinely need it. 16384 asks for 939s and
+    # still leaves 6k of headroom over the largest passing generation observed.
+    max_tokens: 32768
+    probe_expect:
+      weak: fail
+      mid: fail
+      strong: pass
+    what_this_tests: "Resolving who owns a work item from turns scattered across a long transcript, where two people offered, the later offer was accepted, and a distant turn that never names the item reverts it to the first offerer."
+    failure_mode: "Names Marco (offered later, accepted, and the recency answer), Priya (most airtime and most context, ruled herself out), Dana (decided, owns nothing), or an owner of an unrelated item from the filler."
+    haystack:
+      type: multi_key
+      filler_tokens: 9000
+      filler_style: meeting
+      # Declaration order IS narrative order: multi_key spreads distractors
+      # monotonically across 0.15-0.75, which is what lets the thread be laid
+      # out along the transcript instead of pooled in one place.
+      distractors:
+        - "Dana: Next item — the Q3 capacity forecast rebuild. It slipped last quarter and it cannot slip again, so I want it settled on this call."
+        - "Tomas: On the forecast — my audit work closes Thursday and my week is clear after that. I could carry it from there if that helps."
+        - "Dana: Noted, thanks Tomas. Let us come back to it before we close."
+        - "Priya: Worth saying on the forecast — I built the last one end to end, so I have the most context by far. But I am out from the 12th for three weeks, so I cannot be the one carrying it."
+        - "Marco: Actually, let me just take the forecast rebuild. I know the ingest side and I still remember the joins, so it will be quicker in my hands."
+        - "Dana: Fine, that is cleaner. Marco has the forecast rebuild."
+        - "Nadia: Before we wrap — is the forecast rebuild actually covered? I lost track of who has it."
+        - "Dana: It is covered, yes. We settled that during the call."
+      position: 0.72
+      needle: |
+        Dana: Marco, separate thing, and it changes your week. From Monday you are on the billing migration full time — that is coming from above me, so it is not up for discussion.
+        Marco: Understood. That is going to be all of my capacity.
+        Dana: It will be, yes. So anything you picked up earlier on this call goes back to whoever offered for it first. I do not want you holding things you cannot start.
+        Marco: Fair. I will write my notes up for whoever it lands with.
+    prompt: |
+      The document above is the transcript of a planning meeting.
+
+      One of the items discussed was the Q3 capacity forecast rebuild. More than
+      one person offered to take it during the call. Work out who actually ends
+      up owning it once the whole meeting is taken into account.
+
+      Answer with a single line in exactly this form:
+
+      OWNER: <first name>
+    constraints:
+      - {type: regex, pattern: "OWNER:\\s*Tomas\\b"}
+      - {type: not_regex, pattern: "OWNER:\\s*(Priya|Marco|Dana|Ines|Rafael|Nadia|Bo)\\b"}
+    expected:
+      answer: "Tomas"
+      exact: true

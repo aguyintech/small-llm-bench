@@ -1,0 +1,1110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>small-llm-bench leaderboard</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0b0d12;
+    --bg-elev: #12151c;
+    --card: #14171f;
+    --border: #262b36;
+    --text: #e8eaed;
+    --text-dim: #8b93a3;
+    --accent: #6fa8ff;
+    --accent-soft: rgba(111, 168, 255, 0.12);
+    --pos: #4ade80;
+    --pos-bg: rgba(74, 222, 128, 0.12);
+    --neg: #f87171;
+    --neg-bg: rgba(248, 113, 113, 0.12);
+    --row-alt: #171a23;
+    --row-hover: #1d2230;
+    --gold: #f5c451;
+    --silver: #c9ced8;
+    --bronze: #d99a63;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+    --track: #1e2330;
+    --grid: #232937;
+    /* Tier palette: the tier-list convention, in pastel. Seven hues around the
+       wheel for an ordered variable is not what a colour formula would pick —
+       a rainbow on ordinal data loses its ordering in greyscale — and this is
+       a deliberate call for recognisability: readers know S-red / F-pink from
+       every tier list they have seen, and that convention carries more here
+       than an optimal ramp would.
+
+       What makes it safe is that colour never carries the tier on its own. The
+       letter is printed on the chip, the rail, the chart heading and the detail
+       card, and every bar is labelled with its own value, so the palette is
+       decoration over an explicit label rather than the encoding itself.
+
+       Generated in OKLCh and checked with the dataviz validator. Lightness
+       tracks hue the way the eye already expects it to (yellow lightest, violet
+       deepest), which is what lifts the crowded warm end: worst adjacent pair
+       went from dE 6.9 to 10.3 dark / 12.0 light against a 15 target. It does
+       not reach 15 and cannot — seven pastel hues means low chroma over small
+       arcs — so the printed letter is load-bearing, not a nicety. Contrast on
+       the light surface warns for the same reason; the dark ink on each chip
+       and the value beside each bar are the required relief. */
+    --ink-dark: #16181d;
+    --ink-light: #ffffff;
+    --tier-S: #ff958c; --tier-S-ink: var(--ink-dark);
+    --tier-A: #ffba6d; --tier-A-ink: var(--ink-dark);
+    --tier-B: #f6e57f; --tier-B-ink: var(--ink-dark);
+    --tier-C: #90e893; --tier-C-ink: var(--ink-dark);
+    --tier-D: #6bcdff; --tier-D-ink: var(--ink-dark);
+    --tier-E: #b99cff; --tier-E-ink: var(--ink-dark);
+    --tier-F: #ff9fe6; --tier-F-ink: var(--ink-dark);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f3f4f7;
+      --bg-elev: #ffffff;
+      --card: #ffffff;
+      --border: #e3e5eb;
+      --text: #1a1d24;
+      --text-dim: #6b7180;
+      --accent: #2563eb;
+      --accent-soft: rgba(37, 99, 235, 0.08);
+      --pos: #16a34a;
+      --pos-bg: rgba(22, 163, 74, 0.1);
+      --neg: #dc2626;
+      --neg-bg: rgba(220, 38, 38, 0.1);
+      --row-alt: #f8f9fb;
+      --row-hover: #eef1f6;
+      --shadow: 0 8px 24px rgba(20, 20, 40, 0.08);
+      --track: #edf0f5;
+      --grid: #e8ebf1;
+      /* Same hues, stepped down against the white surface rather than reused
+         from the dark palette: the dark set is pitched to glow on #14171f and
+         washes out on white. */
+      --tier-S: #f8867f; --tier-S-ink: var(--ink-dark);
+      --tier-A: #fdad63; --tier-A-ink: var(--ink-dark);
+      --tier-B: #e9d871; --tier-B-ink: var(--ink-dark);
+      --tier-C: #84d987; --tier-C-ink: var(--ink-dark);
+      --tier-D: #59baf8; --tier-D-ink: var(--ink-dark);
+      --tier-E: #a386ee; --tier-E-ink: var(--ink-dark);
+      --tier-F: #ef91d5; --tier-F-ink: var(--ink-dark);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    margin: 0; padding: 2.5rem 2.5rem 3.5rem;
+    background: var(--bg); color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.25rem; }
+  .titles h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.3rem; letter-spacing: -0.01em; }
+  .titles .sub { color: var(--text-dim); font-size: 0.88rem; }
+  .stats { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .chip {
+    background: var(--accent-soft); color: var(--accent);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 0.35rem 0.8rem; font-size: 0.78rem; font-weight: 600;
+    white-space: nowrap;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: var(--shadow); overflow: hidden;
+  }
+
+  /* ---- tabs ---- */
+  .tabs { display: flex; gap: 0.25rem; margin-bottom: 1.25rem;
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: 12px; padding: 0.3rem; width: fit-content; max-width: 100%;
+    flex-wrap: wrap; }
+  .tabs button {
+    font: inherit; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    color: var(--text-dim); background: transparent; border: 0;
+    border-radius: 9px; padding: 0.5rem 1.1rem; transition: all 0.12s ease;
+  }
+  .tabs button:hover { color: var(--text); }
+  .tabs button[aria-selected="true"] {
+    background: var(--accent-soft); color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .panel[hidden] { display: none; }
+
+  /* ---- tier chips ---- */
+  .tier-chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 1.45rem; height: 1.45rem; padding: 0 0.4rem;
+    border-radius: 6px; font-size: 0.74rem; font-weight: 800;
+    letter-spacing: 0.02em; vertical-align: middle;
+    background: var(--tc); color: var(--tc-ink);
+  }
+
+  /* ---- tab 1: ranked horizontal bars ---- */
+  .board { padding: 0.5rem 0 0.75rem; }
+  .tier-group { display: grid; grid-template-columns: 5.5rem 1fr;
+    border-bottom: 1px solid var(--border); }
+  .tier-group:last-child { border-bottom: none; }
+  .tier-rail {
+    display: flex; flex-direction: column; align-items: center; gap: 0.3rem;
+    padding: 0.9rem 0.5rem; border-right: 1px solid var(--border);
+    position: relative;
+  }
+  .tier-rail::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--tc);
+  }
+  .tier-rail .tier-chip { min-width: 1.9rem; height: 1.9rem; font-size: 0.92rem; }
+  .tier-rail .tier-range { font-size: 0.68rem; color: var(--text-dim);
+    font-variant-numeric: tabular-nums; }
+  .tier-rows { padding: 0.45rem 0; min-width: 0; }
+  .tier-empty { padding: 0.9rem 1rem; font-size: 0.78rem; color: var(--text-dim);
+    font-style: italic; }
+  .bar-row {
+    display: grid; align-items: center; gap: 0.75rem;
+    grid-template-columns: 1.9rem minmax(120px, 290px) 1fr 3.6rem;
+    width: 100%; padding: 0.4rem 1rem; border: 0; background: transparent;
+    font: inherit; color: var(--text); text-align: left; cursor: pointer;
+    border-radius: 8px; transition: background 0.1s ease;
+  }
+  .bar-row:hover { background: var(--row-hover); }
+  .bar-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .bar-rank { font-size: 0.74rem; font-weight: 700; color: var(--text-dim);
+    font-variant-numeric: tabular-nums; text-align: right; }
+  .bar-name { font-size: 0.84rem; font-weight: 600; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .bar-size { font-size: 0.72rem; font-weight: 500; color: var(--text-dim);
+    margin-left: 0.4rem; }
+  .bar-track { height: 1.45rem; background: var(--track); border-radius: 5px;
+    position: relative; overflow: hidden; min-width: 40px; }
+  .bar-fill { position: absolute; inset: 0 auto 0 0; background: var(--tc);
+    border-radius: 0 4px 4px 0; }
+  .bar-row.unjudged .bar-fill {
+    background: repeating-linear-gradient(135deg, var(--tc) 0 7px,
+      color-mix(in srgb, var(--tc) 55%, transparent) 7px 14px);
+  }
+  .bar-value { font-size: 0.86rem; font-weight: 700; text-align: right;
+    font-variant-numeric: tabular-nums; }
+
+  /* ---- tab 2: one chart per tier ---- */
+  /* Two tiers per row. `minmax(0, 1fr)` rather than `1fr`: a grid track's
+     default min-content floor is the SVG's min-width, which would otherwise
+     push the pair wider than the page. */
+  .tier-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem; align-items: start; }
+  .tier-panel { padding: 1.1rem 1.25rem 0.4rem; }
+  /* Footprint buckets are full-width: each holds two charts of its own. */
+  .param-grid { grid-template-columns: minmax(0, 1fr); }
+  .param-panel { padding: 1.1rem 1.25rem 0.4rem; }
+  .arch-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 1.5rem; margin-top: 0.4rem; }
+  .arch-split > .arch-col + .arch-col { border-left: 1px solid var(--border);
+    padding-left: 1.5rem; }
+  .arch-head { font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-dim); display: flex;
+    align-items: center; gap: 0.45rem; padding-left: 0.15rem; }
+  .arch-count { font-size: 0.7rem; font-weight: 600; letter-spacing: 0;
+    background: var(--track); border-radius: 999px; padding: 0.05rem 0.45rem; }
+  .tier-head { display: flex; align-items: center; gap: 0.6rem;
+    margin-bottom: 0.2rem; flex-wrap: wrap; }
+  .tier-head h2 { font-size: 0.95rem; font-weight: 700; margin: 0;
+    letter-spacing: 0.02em; }
+  .tier-head .tier-meta { font-size: 0.76rem; color: var(--text-dim); }
+  .chart-scroll { overflow-x: auto; }
+  .bar-chart { display: block; width: 100%; height: auto; min-width: 420px; }
+  .bar-chart .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .bar-chart .axis-label { fill: var(--text-dim); font-size: 11px;
+    font-variant-numeric: tabular-nums; }
+  .bar-chart .bar { cursor: pointer; }
+  .bar-chart .bar rect.mark { fill: var(--tc); }
+  .bar-chart .bar:hover rect.mark { filter: brightness(1.12); }
+  .bar-chart .bar .value { fill: var(--text); font-size: 12px; font-weight: 700;
+    text-anchor: middle; font-variant-numeric: tabular-nums; }
+  .bar-chart .bar .name { fill: var(--text-dim); font-size: 11px;
+    text-anchor: middle; }
+  .bar-chart .bar:hover .name { fill: var(--text); }
+
+  /* ---- tab 3: the detailed table (unchanged) ---- */
+  .table-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.84rem; min-width: 900px; }
+  th, td { padding: 0.65rem 0.9rem; text-align: right; white-space: nowrap; }
+  /* First 5 columns (Model + the 4 overall scores) stay fixed; only the
+     module columns scroll. The `left` offsets are NOT declared here — they are
+     measured and written by `applyStickyOffsets` after each render. They used
+     to be hand-computed constants matched to fixed column widths, and every
+     change to what a cell contains silently broke them: a tier chip in the
+     model cell and a MoE badge beside the size grew columns 1 and 2 to 264px
+     and 163px against declared 230px and 108px, so columns 2-5 overlapped as
+     soon as the table scrolled. Measuring costs one layout read per render. */
+  th:nth-child(1), td:nth-child(1) { min-width: 230px; }
+  th:nth-child(2), td:nth-child(2) { min-width: 118px; }
+  th:nth-child(3), td:nth-child(3),
+  th:nth-child(4), td:nth-child(4),
+  th:nth-child(5), td:nth-child(5) { min-width: 108px; }
+  th:nth-child(-n+5), td:nth-child(-n+5) {
+    position: sticky; z-index: 2; background: var(--card);
+  }
+  th:nth-child(1), td:nth-child(1) { text-align: left; }
+  th:nth-child(5), td:nth-child(5) { box-shadow: 2px 0 6px rgba(0, 0, 0, 0.15); }
+  td:first-child { font-weight: 600; }
+  thead th {
+    cursor: pointer; user-select: none; font-weight: 600; font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 3; background: var(--bg-elev);
+    transition: color 0.12s ease;
+  }
+  thead th:nth-child(-n+5) { z-index: 4; background: var(--bg-elev); }
+  thead th:hover { color: var(--accent); }
+  thead th.sorted-asc, thead th.sorted-desc { color: var(--accent); }
+  thead th .arrow { margin-left: 0.25rem; opacity: 0.7; }
+  th.group-start, td.group-start { border-left: 1px solid var(--border); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s ease; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:nth-child(odd) { background: var(--row-alt); }
+  tbody tr:nth-child(odd) td:nth-child(-n+5) { background: var(--row-alt); }
+  tbody tr:hover td { background: var(--row-hover); }
+  .model-link { background: none; border: 0; padding: 0; font: inherit;
+    color: inherit; cursor: pointer; text-align: left; }
+  .model-link:hover { color: var(--accent); text-decoration: underline; }
+  .rank { display: inline-flex; align-items: center; justify-content: center;
+    width: 1.6rem; height: 1.6rem; border-radius: 50%; font-size: 0.72rem;
+    font-weight: 700; margin-right: 0.45rem; color: var(--text-dim);
+    background: transparent; }
+  .rank.medal-1 { background: color-mix(in srgb, var(--gold) 25%, transparent); color: var(--gold); }
+  .rank.medal-2 { background: color-mix(in srgb, var(--silver) 25%, transparent); color: var(--silver); }
+  .rank.medal-3 { background: color-mix(in srgb, var(--bronze) 25%, transparent); color: var(--bronze); }
+  .cell-flex { display: flex; justify-content: flex-end; align-items: center; gap: 0.4rem; }
+  .cell-flex .score { min-width: 3.6em; text-align: right; }
+  .delta { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 6px;
+    font-size: 0.72rem; font-weight: 600; }
+  .delta-pos { color: var(--pos); background: var(--pos-bg); }
+  .delta-neg { color: var(--neg); background: var(--neg-bg); }
+  .cell-na { color: var(--text-dim); }
+  .speed { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .overall { font-weight: 700; }
+  .overall.dim { font-weight: 400; color: var(--text-dim); }
+  .foot {
+    margin-top: 1.5rem; font-size: 0.8rem; color: var(--text-dim);
+    line-height: 1.6; max-width: 900px;
+  }
+  .foot h3 { font-size: 0.8rem; color: var(--text); margin: 1.1rem 0 0.35rem; }
+  .legend-dot { display: inline-block; width: 0.55rem; height: 0.55rem;
+    border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; }
+  .fast-badge { display: inline-block; margin-left: 0.5rem; padding: 0.05rem 0.4rem;
+    border-radius: 6px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.03em;
+    color: var(--neg); background: var(--neg-bg); vertical-align: middle; }
+
+  .arch-badge { display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.4rem;
+    border-radius: 6px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em;
+    color: var(--accent); background: var(--accent-soft);
+    border: 1px solid var(--border); vertical-align: middle; }
+  .cov-badge { display: inline-block; margin-left: 0.4rem; font-size: 0.8rem;
+    color: var(--neg); cursor: help; vertical-align: middle; }
+  .partial { opacity: 0.55; }
+
+  /* ---- model modal ---- */
+  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.55);
+    display: flex; align-items: center; justify-content: center; padding: 1.5rem;
+    z-index: 50; }
+  .backdrop[hidden] { display: none; }
+  .modal { background: var(--card); border: 1px solid var(--border);
+    border-radius: 18px; box-shadow: var(--shadow); width: min(680px, 100%);
+    max-height: 90vh; overflow-y: auto; padding: 1.5rem 1.6rem 1.3rem; }
+  .modal-head { display: flex; align-items: flex-start; gap: 0.7rem;
+    margin-bottom: 0.15rem; }
+  .modal-head h2 { font-size: 1.15rem; font-weight: 700; margin: 0;
+    letter-spacing: -0.01em; flex: 1; min-width: 0; word-break: break-word; }
+  .modal-close { background: transparent; border: 1px solid var(--border);
+    color: var(--text-dim); border-radius: 8px; width: 1.9rem; height: 1.9rem;
+    font-size: 1rem; line-height: 1; cursor: pointer; flex-shrink: 0; }
+  .modal-close:hover { color: var(--text); background: var(--row-hover); }
+  .modal-sub { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 1rem; }
+  .modal-headline { display: flex; align-items: baseline; gap: 0.5rem;
+    margin-bottom: 1rem; }
+  .modal-headline .big { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums; }
+  .modal-headline .unit { font-size: 0.85rem; color: var(--text-dim); }
+  .radar-wrap { display: flex; justify-content: center; margin: 0 0 0.5rem; }
+  .radar { width: 100%; max-width: 400px; height: auto; }
+  .radar .ring { fill: none; stroke: var(--grid); stroke-width: 1; }
+  .radar .spoke { stroke: var(--grid); stroke-width: 1; }
+  .radar .area { fill: color-mix(in srgb, var(--tc) 36%, transparent);
+    stroke: var(--tc); stroke-width: 2; stroke-linejoin: round; }
+  .radar .vertex { fill: var(--tc); stroke: var(--card); stroke-width: 2; }
+  .radar .axis-name { fill: var(--text-dim); font-size: 10.5px; }
+  .radar .axis-val { fill: var(--text); font-size: 10.5px; font-weight: 700;
+    font-variant-numeric: tabular-nums; }
+  .radar .ring-label { fill: var(--text-dim); font-size: 9px;
+    font-variant-numeric: tabular-nums; }
+  .modal-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 0.5rem; margin: 0.9rem 0 0; }
+  .stat { background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: 10px; padding: 0.5rem 0.6rem; }
+  .stat .k { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-dim); }
+  .stat .v { font-size: 0.92rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .modal-note { margin-top: 0.9rem; font-size: 0.76rem; line-height: 1.55;
+    color: var(--text-dim); border-left: 2px solid var(--border);
+    padding-left: 0.7rem; }
+  .modal-note.warn { border-left-color: var(--neg); }
+
+  @media (max-width: 1000px) {
+    .tier-panels { grid-template-columns: minmax(0, 1fr); }
+    .arch-split { grid-template-columns: minmax(0, 1fr); }
+    .arch-split > .arch-col + .arch-col { border-left: 0; padding-left: 0;
+      border-top: 1px solid var(--border); padding-top: 0.75rem; }
+  }
+  @media (max-width: 720px) {
+    body { padding: 1.25rem 1rem 2.5rem; }
+    .tier-group { grid-template-columns: 1fr; }
+    .tier-rail { flex-direction: row; justify-content: flex-start;
+      border-right: none; border-bottom: 1px solid var(--border);
+      padding: 0.5rem 1rem; }
+    .bar-row { grid-template-columns: 1.6rem 1fr 3.2rem;
+      grid-template-areas: "rank name value" ". bar bar"; gap: 0.35rem 0.6rem; }
+    .bar-rank { grid-area: rank; }
+    .bar-name { grid-area: name; }
+    .bar-value { grid-area: value; }
+    .bar-track { grid-area: bar; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="titles">
+      <h1>small-llm-bench leaderboard</h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="Leaderboard views">
+    <button role="tab" id="tab-leaderboard" data-tab="leaderboard"
+            aria-controls="panel-leaderboard" aria-selected="true">Leaderboard</button>
+    <button role="tab" id="tab-by-tier" data-tab="by-tier"
+            aria-controls="panel-by-tier" aria-selected="false" tabindex="-1">By tier</button>
+    <button role="tab" id="tab-by-params" data-tab="by-params"
+            aria-controls="panel-by-params" aria-selected="false" tabindex="-1">By params</button>
+    <button role="tab" id="tab-detailed" data-tab="detailed"
+            aria-controls="panel-detailed" aria-selected="false" tabindex="-1">Detailed</button>
+  </div>
+
+  <div class="panel" id="panel-leaderboard" role="tabpanel" aria-labelledby="tab-leaderboard">
+    <div class="card"><div class="board" id="board-bars"></div></div>
+  </div>
+
+  <div class="panel" id="panel-by-tier" role="tabpanel" aria-labelledby="tab-by-tier" hidden>
+    <div class="tier-panels" id="tier-panels"></div>
+  </div>
+
+  <div class="panel" id="panel-by-params" role="tabpanel" aria-labelledby="tab-by-params" hidden>
+    <div class="tier-panels param-grid" id="param-panels"></div>
+  </div>
+
+  <div class="panel" id="panel-detailed" role="tabpanel" aria-labelledby="tab-detailed" hidden>
+    <div class="card">
+      <div class="table-scroll">
+        <table id="board">
+          <thead><tr id="header-row"></tr></thead>
+          <tbody id="body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <h3>What the score is</h3>
+    Models are ranked on the <strong>judged pass<sup>k</sup></strong> rate &mdash;
+    the module-weighted share of tasks a model passed on all
+    <span id="foot-k">k</span> independent trials, after the LLM judge's
+    adjustments. The charts show it as a percentage; the Detailed tab's
+    "Judged pass" column is the same number on a 0&ndash;1 scale. A model with no
+    judge run falls back to its unjudged pass<sup>k</sup>, is drawn with a
+    hatched bar, and is flagged in its detail card &mdash; its score is not
+    strictly comparable to a judged one.
+
+    <h3>What the tiers are, and are not</h3>
+    Tiers are fixed bands on that score (<span id="foot-bands"></span>). They are
+    an editorial cut, chosen to stay put between runs &mdash; a tier says a model
+    scored in a given range and nothing more. They are <em>not</em> a claim that
+    the bank can tell one tier from another. That question is answered by the
+    <strong>pairs separable</strong> chip, which counts how many of the model
+    pairs on this board the bank can actually distinguish, by a paired sign test
+    over the tasks both models ran, Holm-corrected across every pair shown. When
+    that count is low the fix is better tasks, not a longer run &mdash; and
+    adding models lowers it, because the correction is over the number of
+    simultaneous comparisons. The per-pair verdicts ship in the sibling
+    <code>.json</code>.
+
+    <h3>What the By params tab groups on</h3>
+    Buckets cut on <strong>total</strong> parameters &mdash; what you have to
+    load &mdash; while the Params column ranks a sparse model by its
+    <strong>active</strong> parameters, which is what a forward pass costs. The
+    two disagree on purpose: <code>ornith-1.5-35b</code> is a 35B model with ~3B
+    active, so it sorts among the 3B rows and sits in the 24B-and-above bucket,
+    and both are right. A <span class="arch-badge">MOE</span> or
+    <span class="arch-badge">PLE</span> badge marks a model that activates less
+    than it loads; an unbadged row is dense. Comparing the two halves of a
+    bucket asks the useful question: at this footprint, what does sparsity cost?
+
+    <h3>Reading the Detailed tab</h3>
+    Module columns show the raw deterministic score, with a
+    <span class="delta delta-pos">+delta</span>/<span class="delta delta-neg">&minus;delta</span>
+    pill when a model has been judged (judged score minus raw). "Det score" is
+    the weighted mean task score; "Pass" is the pass<sup>k</sup> headline rate.
+    "Judged det"/"Judged pass" repeat those two after the LLM judge's
+    adjustments, where available. A <span class="cov-badge">&#9888;</span> next
+    to a model means the judge did not cover every trial (a <code>*</code> marks
+    which modules): those modules fall back to their deterministic score, so the
+    judged columns of that row are a blend and are not comparable to a
+    fully-judged run. <code>format</code> and <code>knowledge</code> are never
+    sent to the judge by design, so they carry no delta.
+  </div>
+</div>
+
+<div class="backdrop" id="modal-backdrop" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
+       id="modal"></div>
+</div>
+
+<script type="application/json" id="leaderboard-data">{{ data_json }}</script>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById("leaderboard-data").textContent);
+  const modules = data.modules;
+  const rows = data.rows.slice();
+  const tiers = data.tiers || [];
+  const moduleWeights = data.module_weights || {};
+  const judgedCount = rows.filter((r) => r.has_judge).length;
+
+  const incompleteCount = rows.filter(
+    (r) => r.has_judge && r.judge_complete === false).length;
+  const sepPairs = data.separable_pairs;
+  const totalPairs = data.total_pairs;
+  const byModel = new Map(rows.map((r) => [r.model, r]));
+
+  // Short axis labels. The module keys are storage names; a radar axis has
+  // about ten characters of room before the labels start colliding.
+  const MODULE_LABELS = {
+    tools: "tools", format: "format", code: "code",
+    multi_turn_if: "multi-turn", long_context: "long ctx",
+    adversarial: "adversarial", knowledge: "knowledge",
+  };
+  // The judge is never asked about these, so an absent delta on them is the
+  // design, not missing data.
+  const JUDGE_SKIPPED = new Set(["format", "knowledge"]);
+
+  const statsEl = document.getElementById("stats");
+  const stats = [
+    `${rows.length} model${rows.length === 1 ? "" : "s"}`,
+    `${judgedCount} judged`,
+    ...(incompleteCount ? [`${incompleteCount} incomplete judge coverage`] : []),
+    ...(totalPairs ? [`${sepPairs}/${totalPairs} pairs separable`] : []),
+    `k = ${data.headline_k}`,
+    `weights: ${data.weights}`,
+    `scheme: ${data.scheme}`,
+  ];
+  statsEl.innerHTML = stats.map((s) => `<span class="chip">${s}</span>`).join("");
+  document.getElementById("subtitle").textContent =
+    `${rows.length} models ranked by judged pass^${data.headline_k}. `
+    + "Click any model for its module breakdown.";
+  document.getElementById("foot-k").textContent = data.headline_k;
+  document.getElementById("foot-bands").textContent = tiers
+    .map((t) => (t.floor > 0 ? `${t.letter} ≥ ${pctLabel(t.floor)}` : `${t.letter} below ${pctLabel(tiers[tiers.length - 2].floor)}`))
+    .join(", ");
+
+  function esc(value) {
+    return String(value).replace(/[&<>"]/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  // The charts speak in percent because a pass rate reads as one and because a
+  // two-digit number survives a video frame; the table keeps the 0-1 form.
+  function pctLabel(value) {
+    if (value === null || value === undefined) return "—";
+    return (value * 100).toFixed(1);
+  }
+
+  function headlineOf(row) {
+    return row.headline !== undefined && row.headline !== null
+      ? row.headline
+      : (row.overall_judge_pass !== null && row.overall_judge_pass !== undefined
+        ? row.overall_judge_pass : row.overall_pass);
+  }
+
+  // Per-module pass^k: the same family as the headline, so the radar and the
+  // bar tell the same story. The det scores would not — they sit between .80
+  // and 1.00 for almost every model and every radar comes out the same shape.
+  function moduleValue(row, name) {
+    const cell = row.modules[name];
+    if (!cell) return null;
+    return cell.judge_pass !== undefined && cell.judge_pass !== null
+      ? cell.judge_pass : cell.pass;
+  }
+
+  function tierVars(letter) {
+    return `--tc: var(--tier-${letter}); --tc-ink: var(--tier-${letter}-ink)`;
+  }
+
+  // Only sparse models get a badge. A "dense" pill on 14 of 21 rows would be
+  // noise; the absence of one is the signal.
+  function archBadge(size) {
+    if (!size || !size.is_sparse) return "";
+    const arch = (size.arch || "moe").toUpperCase();
+    const title = arch === "PLE"
+      ? "Per-layer embeddings: fewer parameters active per token than are loaded, without expert routing"
+      : "Mixture of experts: fewer parameters active per token than are loaded";
+    return ` <span class="arch-badge" title="${title}">${arch}</span>`;
+  }
+
+  function tierChip(letter) {
+    return `<span class="tier-chip" style="${tierVars(letter)}">${letter}</span>`;
+  }
+
+  /* ---------- tab 1: ranked horizontal bars ---------- */
+
+  function renderBars() {
+    const host = document.getElementById("board-bars");
+    host.innerHTML = tiers.map((tier) => {
+      const members = rows.filter((r) => r.tier === tier.letter);
+      const range = tier.floor > 0
+        ? `≥ ${pctLabel(tier.floor)}` : `< ${pctLabel(tiers[tiers.length - 2].floor)}`;
+      const body = members.length
+        ? members.map((row) => {
+          const rank = rows.indexOf(row) + 1;
+          const value = headlineOf(row);
+          const unjudged = row.headline_judged === false;
+          const mark = unjudged
+            ? ' <span class="cov-badge" title="no judge run for this model - the score shown is its unjudged pass rate and is not strictly comparable to a judged one">&#9888;</span>'
+            : "";
+          const size = row.size && row.size.label && row.size.label !== "?"
+            ? `<span class="bar-size">${esc(row.size.label)}</span>${archBadge(row.size)}` : "";
+          return `<button class="bar-row${unjudged ? " unjudged" : ""}" data-model="${esc(row.model)}"`
+            + ` title="${esc(row.model)} — ${pctLabel(value)}% judged pass^${data.headline_k}">`
+            + `<span class="bar-rank">${rank}</span>`
+            + `<span class="bar-name">${esc(row.model)}${size}${mark}</span>`
+            + `<span class="bar-track"><span class="bar-fill" style="width:${(value * 100).toFixed(2)}%"></span></span>`
+            + `<span class="bar-value">${pctLabel(value)}</span>`
+            + `</button>`;
+        }).join("")
+        : '<div class="tier-empty">No models in this tier.</div>';
+      return `<div class="tier-group" style="${tierVars(tier.letter)}">`
+        + `<div class="tier-rail">${tierChip(tier.letter)}`
+        + `<span class="tier-range">${range}</span></div>`
+        + `<div class="tier-rows">${body}</div></div>`;
+    }).join("");
+  }
+
+  /* ---------- tab 2: one vertical bar chart per tier ---------- */
+
+  // Long model names do not fit under a bar on one line, and rotating them
+  // costs more legibility than it saves. Split on the separator nearest the
+  // middle instead, which keeps both halves readable at 11px.
+  function wrapName(name) {
+    if (name.length <= 15) return [name];
+    const marks = [];
+    for (let i = 1; i < name.length - 1; i++) {
+      if (name[i] === "-" || name[i] === "_") marks.push(i);
+    }
+    if (!marks.length) return [name.slice(0, 15), name.slice(15)];
+    const mid = name.length / 2;
+    const cut = marks.reduce((a, b) => (Math.abs(b - mid) < Math.abs(a - mid) ? b : a));
+    return [name.slice(0, cut + 1), name.slice(cut + 1)];
+  }
+
+  // One chart renderer for both the by-tier and by-params tabs. The by-params
+  // buckets are full-width cards split into two halves, so a half there is the
+  // same width as a whole card in the 2-up tier grid and the frame carries
+  // over unchanged.
+  function barChart(members) {
+    const n = members.length;
+    // Every chart gets the SAME frame: same width, same 0-100 axis. A reader
+    // flipping between screenshots is then comparing bars, not axes.
+    const width = 660, height = 290;
+    const padL = 44, padR = 16, padT = 26, padB = 48;
+    const plotW = width - padL - padR;
+    const plotH = height - padT - padB;
+    const slot = Math.min(122, plotW / n);
+    const startX = padL + (plotW - slot * n) / 2;
+    const barW = Math.min(58, slot * 0.52);
+    const yOf = (v) => padT + plotH * (1 - v);
+
+    let svg = `<svg class="bar-chart" viewBox="0 0 ${width} ${height}"`
+      + ` role="img" preserveAspectRatio="xMidYMid meet">`;
+    // A fixed 0-100 axis on every tier. Auto-scaling each tier to its own max
+    // would draw F-tier bars as tall as S-tier ones, which is the exact
+    // misreading these charts exist to prevent.
+    [0, 0.25, 0.5, 0.75, 1].forEach((v) => {
+      const y = yOf(v);
+      svg += `<line class="grid-line" x1="${padL}" y1="${y}" x2="${width - padR}" y2="${y}"/>`;
+      svg += `<text class="axis-label" x="${padL - 9}" y="${y + 4}" text-anchor="end">${v * 100}</text>`;
+    });
+    members.forEach((row, i) => {
+      const value = headlineOf(row);
+      const cx = startX + slot * (i + 0.5);
+      const y = yOf(value);
+      const h = Math.max(2, plotH - (y - padT));
+      const unjudged = row.headline_judged === false;
+      const lines = wrapName(row.model).map((line, li) =>
+        `<tspan x="${cx.toFixed(1)}" dy="${li === 0 ? 0 : 13}">${esc(line)}</tspan>`).join("");
+      // Tier colour is set per BAR, not per card. In the by-tier tab every bar
+      // in a chart shares a tier so this changes nothing; in the by-params tab
+      // a bucket mixes tiers, and that mix is the whole point of the view.
+      svg += `<g class="bar" data-model="${esc(row.model)}" tabindex="0" role="button"`
+        + ` style="${tierVars(row.tier)}"`
+        + ` aria-label="${esc(row.model)}, ${pctLabel(value)} percent, tier ${row.tier}">`
+        + `<title>${esc(row.model)} — ${pctLabel(value)}% · tier ${row.tier}`
+        + `${unjudged ? " (unjudged)" : ""}</title>`
+        + `<rect class="mark" x="${(cx - barW / 2).toFixed(1)}" y="${y.toFixed(1)}"`
+        + ` width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="4"`
+        + `${unjudged ? ' opacity="0.62" stroke="var(--tc)" stroke-width="1.5" stroke-dasharray="4 3"' : ""}/>`
+        + `<text class="value" x="${cx.toFixed(1)}" y="${(y - 7).toFixed(1)}">${pctLabel(value)}</text>`
+        + `<text class="name" y="${(padT + plotH + 18).toFixed(1)}">${lines}</text>`
+        + `</g>`;
+    });
+    svg += "</svg>";
+    return svg;
+  }
+
+  function renderTierPanels() {
+    const host = document.getElementById("tier-panels");
+    host.innerHTML = tiers.map((tier) => {
+      const members = rows.filter((r) => r.tier === tier.letter);
+      const range = tier.floor > 0
+        ? `≥ ${pctLabel(tier.floor)}%` : `below ${pctLabel(tiers[tiers.length - 2].floor)}%`;
+      const inner = members.length
+        ? `<div class="chart-scroll">${barChart(members)}</div>`
+        : '<div class="tier-empty">No models in this tier.</div>';
+      return `<div class="card tier-panel" style="${tierVars(tier.letter)}">`
+        + `<div class="tier-head">${tierChip(tier.letter)}<h2>Tier ${tier.letter}</h2>`
+        + `<span class="tier-meta">${range} &middot; ${members.length} model`
+        + `${members.length === 1 ? "" : "s"}</span></div>`
+        + inner + `</div>`;
+    }).join("");
+  }
+
+  /* ---------- tab 3: footprint buckets, dense against sparse ---------- */
+
+  function archHalf(title, members, emptyText) {
+    const body = members.length
+      ? `<div class="chart-scroll">${barChart(members)}</div>`
+      : `<div class="tier-empty">${emptyText}</div>`;
+    return `<div class="arch-col"><div class="arch-head">${title}`
+      + `<span class="arch-count">${members.length}</span></div>${body}</div>`;
+  }
+
+  function renderParamPanels() {
+    const host = document.getElementById("param-panels");
+    host.innerHTML = (data.size_buckets || []).map((bucket) => {
+      const members = rows.filter((r) => r.size && r.size.bucket === bucket.key);
+      if (!members.length) return "";
+      const dense = members.filter((r) => !r.size.is_sparse);
+      const sparse = members.filter((r) => r.size.is_sparse);
+      return `<div class="card param-panel">`
+        + `<div class="tier-head"><h2>${esc(bucket.label)}</h2>`
+        + `<span class="tier-meta">${members.length} model`
+        + `${members.length === 1 ? "" : "s"} &middot; by total parameters</span></div>`
+        + `<div class="arch-split">`
+        + archHalf("Dense", dense, "No dense models at this size.")
+        + archHalf("Sparse", sparse, "No sparse models at this size.")
+        + `</div></div>`;
+    }).join("");
+    // A model the registry does not know has no footprint, which is not the
+    // same as a small one — it is held out of the buckets and named, rather
+    // than filed under the bottom one where it would read as a 1B.
+    const unknown = rows.filter((r) => !r.size || r.size.bucket === null);
+    if (unknown.length) {
+      host.innerHTML += `<div class="card param-panel">`
+        + `<div class="tier-head"><h2>Size unknown</h2>`
+        + `<span class="tier-meta">${unknown.length} model`
+        + `${unknown.length === 1 ? "" : "s"} not in models.yaml</span></div>`
+        + `<div class="chart-scroll">${barChart(unknown)}</div></div>`;
+    }
+  }
+
+  /* ---------- the model detail modal, with its radar ---------- */
+
+  function radar(row) {
+    const W = 400, H = 346, cx = W / 2, cy = 172, R = 104;
+    const n = modules.length;
+    const pt = (i, r) => {
+      const a = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+      return [cx + Math.cos(a) * R * r, cy + Math.sin(a) * R * r];
+    };
+    let svg = `<svg class="radar" viewBox="0 0 ${W} ${H}" role="img"`
+      + ` aria-label="Per-module pass rate for ${esc(row.model)}">`;
+    [0.25, 0.5, 0.75, 1].forEach((r) => {
+      const poly = Array.from({ length: n }, (_, i) => pt(i, r).map((v) => v.toFixed(1)).join(","));
+      svg += `<polygon class="ring" points="${poly.join(" ")}"/>`;
+    });
+    [0.5, 1].forEach((r) => {
+      const [, y] = pt(0, r);
+      svg += `<text class="ring-label" x="${cx + 3}" y="${(y + 10).toFixed(1)}">${r * 100}</text>`;
+    });
+    modules.forEach((m, i) => {
+      const [x, y] = pt(i, 1);
+      svg += `<line class="spoke" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`;
+    });
+    const values = modules.map((m) => moduleValue(row, m));
+    const poly = modules.map((m, i) => {
+      const v = values[i] === null ? 0 : values[i];
+      return pt(i, v).map((c) => c.toFixed(1)).join(",");
+    });
+    svg += `<polygon class="area" points="${poly.join(" ")}"/>`;
+    modules.forEach((m, i) => {
+      if (values[i] === null) return;
+      const [x, y] = pt(i, values[i]);
+      const weight = moduleWeights[m];
+      const note = JUDGE_SKIPPED.has(m) ? " · not sent to the judge" : "";
+      svg += `<circle class="vertex" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4">`
+        + `<title>${esc(MODULE_LABELS[m] || m)}: ${pctLabel(values[i])}%`
+        + `${weight !== undefined ? ` · ${(weight * 100).toFixed(0)}% of the headline` : ""}`
+        + `${note}</title></circle>`;
+    });
+    modules.forEach((m, i) => {
+      const [x, y] = pt(i, 1.24);
+      const anchor = Math.abs(x - cx) < 12 ? "middle" : (x > cx ? "start" : "end");
+      svg += `<text class="axis-name" x="${x.toFixed(1)}" y="${y.toFixed(1)}"`
+        + ` text-anchor="${anchor}">${esc(MODULE_LABELS[m] || m)}</text>`;
+      svg += `<text class="axis-val" x="${x.toFixed(1)}" y="${(y + 12).toFixed(1)}"`
+        + ` text-anchor="${anchor}">${values[i] === null ? "—" : pctLabel(values[i])}</text>`;
+    });
+    svg += "</svg>";
+    return svg;
+  }
+
+  function statBox(label, value) {
+    return `<div class="stat"><div class="k">${label}</div><div class="v">${value}</div></div>`;
+  }
+
+  function modalHtml(row) {
+    const value = headlineOf(row);
+    const rank = rows.indexOf(row) + 1;
+    // A bare "?" reads as a rendering fault. Name the actual gap: the model is
+    // simply not in models.yaml, which is a one-line fix there and not a
+    // property of the run.
+    const known = row.size && row.size.label && row.size.label !== "?";
+    const sizeLabel = known ? row.size.label : "size not in models.yaml";
+    const family = row.size && row.size.family ? ` · ${esc(row.size.family)}` : "";
+    const notes = [];
+    if (row.headline_judged === false) {
+      notes.push(['warn', 'No judge run for this model. The score above is its '
+        + 'unjudged pass rate, shown so the model still ranks — it is not '
+        + 'strictly comparable to a judged score.']);
+    } else if (row.judge_complete === false) {
+      notes.push(['warn', `The judge covered ${(row.judge_coverage * 100).toFixed(0)}% of `
+        + `this model's trials. `
+        + ((row.unjudged_modules || []).length ? `Unjudged: ${esc(row.unjudged_modules.join(", "))}. ` : "")
+        + ((row.partial_modules || []).length ? `Partly judged: ${esc(row.partial_modules.join(", "))}. ` : "")
+        + 'Those modules fall back to their deterministic score, so this row is a blend.']);
+    }
+    if (row.tasks_excluded) {
+      notes.push(['warn', `${row.tasks_excluded} task(s) held fewer than k scorable `
+        + 'trials and were dropped from every score here — usually truncation, '
+        + 'which biases the score upward.']);
+    }
+    if ((row.comparability_mismatch || []).length) {
+      notes.push(['warn', 'Run settings differ from the rest of the board on: '
+        + `${esc(row.comparability_mismatch.join(", "))}. Compare with care.`]);
+    }
+    if (row.tied_with_above) {
+      notes.push(['', 'The bank cannot separate this model from the one ranked '
+        + 'above it'
+        + (row.tie_p_adjusted !== undefined && row.tie_p_adjusted !== null
+          ? ` (adjusted p = ${row.tie_p_adjusted.toFixed(3)}` : "")
+        + (row.tie_tasks_needed ? `; ~${row.tie_tasks_needed} tasks would be needed)` : ")")
+        + '. Their order on this board is not a result.']);
+    }
+    return `<div class="modal-head">`
+      + `<h2 id="modal-title">${esc(row.model)}</h2>`
+      + `<button class="modal-close" id="modal-close" aria-label="Close">&times;</button></div>`
+      + `<div class="modal-sub">Rank ${rank} of ${rows.length} · ${esc(sizeLabel)}`
+      + `${archBadge(row.size)}${family}`
+      + `${row.profile === "fast" ? ' <span class="fast-badge">FAST</span>' : ""}</div>`
+      + `<div class="modal-headline">${tierChip(row.tier)}`
+      + `<span class="big">${pctLabel(value)}</span>`
+      + `<span class="unit">% judged pass^${data.headline_k}</span></div>`
+      + `<div class="radar-wrap">${radar(row)}</div>`
+      + `<div class="modal-stats">`
+      + statBox("Tasks", row.n_tasks == null ? "—" : row.n_tasks)
+      + statBox("Excluded", row.tasks_excluded || 0)
+      + statBox("Run min", row.trial_minutes == null ? "—" : row.trial_minutes)
+      + statBox("tok/s", row.tok_per_s == null ? "—" : row.tok_per_s.toFixed(1))
+      + statBox("1st-try code", row.first_try_rate == null ? "—" : (row.first_try_rate * 100).toFixed(0) + "%")
+      + statBox("Judge cov.", row.judge_coverage == null ? "—" : (row.judge_coverage * 100).toFixed(0) + "%")
+      + `</div>`
+      + notes.map(([cls, text]) => `<div class="modal-note ${cls}">${text}</div>`).join("");
+  }
+
+  const backdrop = document.getElementById("modal-backdrop");
+  const modalEl = document.getElementById("modal");
+  let lastFocus = null;
+
+  function openModal(name) {
+    const row = byModel.get(name);
+    if (!row) return;
+    lastFocus = document.activeElement;
+    modalEl.setAttribute("style", tierVars(row.tier));
+    modalEl.innerHTML = modalHtml(row);
+    backdrop.hidden = false;
+    document.getElementById("modal-close").focus();
+  }
+
+  function closeModal() {
+    if (backdrop.hidden) return;
+    backdrop.hidden = true;
+    modalEl.innerHTML = "";
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+
+  backdrop.addEventListener("click", (event) => {
+    if (event.target === backdrop || event.target.id === "modal-close") closeModal();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeModal();
+    // Nothing in the dialog is focusable but the close button, so keeping Tab
+    // on it is the whole trap.
+    if (event.key === "Tab" && !backdrop.hidden) {
+      event.preventDefault();
+      const close = document.getElementById("modal-close");
+      if (close) close.focus();
+    }
+  });
+  document.addEventListener("click", (event) => {
+    const trigger = event.target.closest("[data-model]");
+    if (trigger) openModal(trigger.dataset.model);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const trigger = event.target.closest && event.target.closest("g[data-model]");
+    if (trigger) { event.preventDefault(); openModal(trigger.dataset.model); }
+  });
+
+  /* ---------- tabs ---------- */
+
+  const tabButtons = Array.from(document.querySelectorAll('[role="tab"]'));
+  function selectTab(name, focus) {
+    tabButtons.forEach((btn) => {
+      const on = btn.dataset.tab === name;
+      btn.setAttribute("aria-selected", on ? "true" : "false");
+      btn.tabIndex = on ? 0 : -1;
+      document.getElementById("panel-" + btn.dataset.tab).hidden = !on;
+      if (on && btn.dataset.tab === "detailed") applyStickyOffsets();
+      if (on && focus) btn.focus();
+    });
+    if (location.hash.slice(1) !== name) history.replaceState(null, "", "#" + name);
+  }
+  tabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => selectTab(btn.dataset.tab, false));
+  });
+  document.querySelector('[role="tablist"]').addEventListener("keydown", (event) => {
+    const i = tabButtons.indexOf(document.activeElement);
+    if (i < 0) return;
+    if (event.key === "ArrowRight") selectTab(tabButtons[(i + 1) % tabButtons.length].dataset.tab, true);
+    if (event.key === "ArrowLeft") selectTab(tabButtons[(i - 1 + tabButtons.length) % tabButtons.length].dataset.tab, true);
+  });
+
+  /* ---------- tab 3: the detailed table ---------- */
+
+  const columns = [{ key: "model", label: "Model" }]
+    .concat([
+      { key: "size.sort_b", label: "Params" },
+      { key: "n_tasks", label: "Tasks" },
+      { key: "trial_minutes", label: "Run min" },
+      { key: "overall_det", label: "Det score" },
+      { key: "overall_pass", label: "Pass" },
+      { key: "overall_llm", label: "Judged det" },
+      { key: "overall_judge_pass", label: "Judged pass" },
+    ])
+    .concat(modules.map((m, i) => ({ key: "modules." + m, label: m, group: i === 0 })))
+    .concat([
+      { key: "first_try_rate", label: "1st-try code", group: true },
+      { key: "tok_per_s", label: "tok/s" },
+      { key: "prefill_tok_s", label: "pp tok/s" },
+      { key: "gen_tok_s", label: "tg tok/s" },
+    ]);
+
+  function get(row, key) {
+    if (key.startsWith("modules.")) {
+      const cell = row.modules[key.slice(8)];
+      return cell ? cell.det : null;
+    }
+    if (key.indexOf(".") !== -1) {
+      return key.split(".").reduce(
+        (acc, part) => (acc === null || acc === undefined ? acc : acc[part]), row);
+    }
+    return row[key];
+  }
+
+  function fmt(value) {
+    return value === null || value === undefined ? "—" : value.toFixed(3);
+  }
+
+  function fmtSpeed(value) {
+    return value === null || value === undefined ? "—" : value.toFixed(1);
+  }
+
+  function fmtP(value) {
+    return value === null || value === undefined ? "?" : value.toFixed(3);
+  }
+
+  function pct(value) {
+    return value === null || value === undefined ? "?" : `${(value * 100).toFixed(0)}%`;
+  }
+
+  function covDetail(row) {
+    const parts = [];
+    if ((row.unjudged_modules || []).length)
+      parts.push(`unjudged: ${row.unjudged_modules.join(", ")}`);
+    if ((row.partial_modules || []).length)
+      parts.push(`partly judged: ${row.partial_modules.join(", ")}`);
+    return parts.join("; ");
+  }
+
+  function moduleCellHtml(cell) {
+    if (!cell) return '<div class="cell-flex"><span class="cell-na">—</span></div>';
+    let deltaHtml = "";
+    if (cell.delta !== undefined && cell.delta !== null && cell.delta !== 0) {
+      const cls = cell.delta >= 0 ? "delta-pos" : "delta-neg";
+      const sign = cell.delta >= 0 ? "+" : "";
+      deltaHtml = `<span class="delta ${cls}">${sign}${cell.delta.toFixed(3)}</span>`;
+    }
+    const covMark = cell.judge_coverage !== undefined
+      ? `<span class="cov-badge" title="judge scored only ${pct(cell.judge_coverage)} of this module's trials">*</span>`
+      : "";
+    return `<div class="cell-flex">${deltaHtml}<span class="score">${fmt(cell.det)}</span>${covMark}</div>`;
+  }
+
+  const headerRow = document.getElementById("header-row");
+  columns.forEach((col) => {
+    const th = document.createElement("th");
+    th.innerHTML = `${col.label}<span class="arrow"></span>`;
+    th.dataset.key = col.key;
+    if (col.group) th.classList.add("group-start");
+    headerRow.appendChild(th);
+  });
+
+  let sortKey = "headline";
+  let sortDir = -1;
+  const medals = ["medal-1", "medal-2", "medal-3"];
+
+  function render() {
+    const sorted = rows.slice().sort((a, b) => {
+      const va = get(a, sortKey);
+      const vb = get(b, sortKey);
+      if (va === null || va === undefined) return 1;
+      if (vb === null || vb === undefined) return -1;
+      if (va < vb) return -1 * sortDir;
+      if (va > vb) return 1 * sortDir;
+      return 0;
+    });
+
+    const body = document.getElementById("body");
+    body.innerHTML = "";
+    sorted.forEach((row, idx) => {
+      const tr = document.createElement("tr");
+      const medalClass = idx < 3 ? medals[idx] : "";
+      const judgedClass = row.has_judge ? "overall" : "overall dim";
+      const fastBadge = row.profile === "fast" ? '<span class="fast-badge">FAST</span>' : "";
+      const incomplete = row.has_judge && row.judge_complete === false;
+      const covBadge = incomplete
+        ? `<span class="cov-badge" title="judge covered ${pct(row.judge_coverage)} of trials; ${covDetail(row)} — judged columns fall back to the deterministic score there and are not comparable to a fully-judged run">&#9888;</span>`
+        : "";
+      const covClass = incomplete ? ` ${judgedClass} partial` : ` ${judgedClass}`;
+      // Only meaningful against the row directly above, so it is suppressed
+      // whenever the user has re-sorted the table by some other column.
+      // Size, covered-task count and honest run time sit immediately beside
+      // the name. A row scored on 33 tasks is not comparable to one scored on
+      // 38, and the usual cause is truncation, which favours the model that
+      // ran out of budget — so the count is on the row, not in a footnote.
+      const excl = row.tasks_excluded || 0;
+      const exclBadge = excl
+        ? `<span class="cov-badge" title="${excl} task(s) had fewer than k scorable trials and were dropped from every score in this row — usually truncation, which biases the row upward">&#9888;</span>`
+        : "";
+      // The tier rides in the model cell rather than in a column of its own:
+      // the five sticky columns are positioned at hand-computed pixel offsets,
+      // and inserting a column ahead of them silently shifts every one.
+      const tierBadge = `<span class="tier-chip" style="${tierVars(row.tier)}">${row.tier}</span> `;
+      let html = `<td><span class="rank ${medalClass}">${idx + 1}</span>${tierBadge}<button class="model-link" data-model="${esc(row.model)}">${row.model}</button>${fastBadge}${covBadge}</td>`;
+      html += `<td>${(row.size && row.size.label) || "?"}${archBadge(row.size)}</td>`;
+      html += `<td>${row.n_tasks == null ? "&mdash;" : row.n_tasks}${exclBadge}</td>`;
+      html += `<td class="speed">${row.trial_minutes == null ? "&mdash;" : row.trial_minutes}</td>`;
+      html += `<td class="overall">${fmt(row.overall_det)}</td>`;
+      html += `<td class="overall">${fmt(row.overall_pass)}</td>`;
+      html += `<td class="${covClass.trim()}">${fmt(row.overall_llm)}</td>`;
+      html += `<td class="${covClass.trim()}">${fmt(row.overall_judge_pass)}</td>`;
+      modules.forEach((m, i) => {
+        html += `<td${i === 0 ? ' class="group-start"' : ""}>${moduleCellHtml(row.modules[m])}</td>`;
+      });
+      // This cell was missing entirely until v1.0 while its header was
+      // present, so every speed column rendered one place to the left of its
+      // own heading.
+      html += `<td class="group-start">${fmt(row.first_try_rate)}</td>`;
+      html += `<td class="speed">${fmtSpeed(row.tok_per_s)}</td>`;
+      html += `<td class="speed">${fmtSpeed(row.prefill_tok_s)}</td>`;
+      html += `<td class="speed">${fmtSpeed(row.gen_tok_s)}</td>`;
+      tr.innerHTML = html;
+      body.appendChild(tr);
+    });
+
+    Array.from(headerRow.children).forEach((th) => {
+      th.classList.remove("sorted-asc", "sorted-desc");
+      const arrow = th.querySelector(".arrow");
+      if (th.dataset.key === sortKey) {
+        th.classList.add(sortDir === 1 ? "sorted-asc" : "sorted-desc");
+        arrow.textContent = sortDir === 1 ? "▲" : "▼";
+      } else {
+        arrow.textContent = "";
+      }
+    });
+
+    applyStickyOffsets();
+  }
+
+  const STICKY_COLS = 5;
+
+  function applyStickyOffsets() {
+    const ths = Array.from(headerRow.children).slice(0, STICKY_COLS);
+    // A hidden panel has no layout, so every width reads 0 and we would pin
+    // all five columns at left:0. Bail and let the tab switch call us again.
+    if (!ths.length || !ths[0].getBoundingClientRect().width) return;
+    let acc = 0;
+    const lefts = ths.map((th) => {
+      const at = acc;
+      acc += th.getBoundingClientRect().width;
+      return at;
+    });
+    ths.forEach((th, i) => { th.style.left = `${lefts[i]}px`; });
+    Array.from(document.getElementById("body").rows).forEach((tr) => {
+      lefts.forEach((left, i) => {
+        if (tr.cells[i]) tr.cells[i].style.left = `${left}px`;
+      });
+    });
+  }
+
+  window.addEventListener("resize", applyStickyOffsets);
+
+  headerRow.addEventListener("click", (event) => {
+    const th = event.target.closest("th");
+    if (!th) return;
+    const key = th.dataset.key;
+    if (sortKey === key) {
+      sortDir *= -1;
+    } else {
+      sortKey = key;
+      sortDir = -1;
+    }
+    render();
+  });
+
+  renderBars();
+  renderTierPanels();
+  renderParamPanels();
+  render();
+  const initial = location.hash.slice(1);
+  selectTab(["leaderboard", "by-tier", "by-params", "detailed"].includes(initial)
+    ? initial : "leaderboard", false);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+# Retired tasks, kept ONLY as test fixtures — NOT part of the bank.
+#
+# v0.15 cut the bank from 59 tasks to 40 (see CHANGELOG). Nineteen tasks left
+# because they carried no ranking signal, but a large part of the scorer test
+# suite used them as fixtures: `tl_26` pins the derived-figure grading path,
+# `tl_33` and `tst_10` pin the waste budget, `ds_14`/`ds_15` pin the
+# ask-vs-answer contrast, `adv_11` pins over-refusal. Deleting them would have
+# deleted that coverage with them.
+#
+# So the definitions live on here, unchanged, and the tests load THIS directory
+# instead of tasks/. Nothing here is ever run against a model or counted in a
+# score: `load_tasks(..., tasks_dir=retired_bank_dir)` is the only reader.
+
+module: format
+tasks:
+  - id: fm_08
+    fast: false
+    difficulty: hard
+    band: anchor
+    answer_type: markdown
+    prompt: "Produce a Markdown document with EXACTLY one level-1 heading as the title, then a table with the columns 'Name' and 'Score' containing exactly two data rows, then exactly three bullet points summarizing it. Do not use any bold or italic markers."
+    constraints:
+      - {type: exact_headings, value: 1}
+      - {type: has_table}
+      - {type: contains, value: "Name"}
+      - {type: contains, value: "Score"}
+      - {type: exact_bullets, value: 3}
+      - {type: not_contains, value: "**"}
+      - {type: not_contains, value: "__"}
+
+  # --- IFEval-style verifiable instructions --------------------------------
+  # v0.15: the `not_contains: q` and `not_contains: ","` rules were removed.
+  # Classifying every stored near-miss across the ten-model panel showed that
+  # above qwen3.5-0.8b the letter ban was the ONLY failure mechanism left, and
+  # it fired on ordinary vocabulary — LFM2.5-2.6B on "queries", ornith-1.5-35b
+  # on "requests", qwen3.8-27b on "requiring". A 2.6B and a 27B trip it the
+  # same way, so it graded which synonym the sampler happened to reach for,
+  # not capability, and it is what made this the module's flakiest item (5 of
+  # 10 models flaky). Same defect class as the type-strictness rule recorded
+  # in the module header: a constraint that splits by vocabulary habit rather
+  # than by size. The six remaining rules still test simultaneous adherence
+  # (header form, bullet count, required word, word budget, closing line).
+  - id: fm_17
+    fast: false
+    difficulty: hard
+    band: mid
+    answer_type: system_adherence
+    system_prompt: |
+      You are a systems status reporter. Follow ALL of these rules in every reply:
+      - Begin your response with the line '### Status Report'.
+      - Use exactly four bullet points, one per system.
+      - Describe every healthy system with the word 'nominal'.
+      - Keep the whole response between 30 and 70 words.
+      - End your response with the exact line 'End of report.'
+    prompt: "Give me a status report on these systems: api gateway (healthy), database (healthy), cache (degraded - high memory usage), build pipeline (healthy)."
+    constraints:
+      - {type: regex, pattern: "^###\\s+Status Report"}
+      - {type: exact_bullets, value: 4}
+      - {type: contains, value: "nominal"}
+      - {type: min_words, value: 30}
+      - {type: max_words, value: 70}
+      - {type: ends_with, value: "End of report."}
+
+  # --- JSON mode under 13 simultaneous constraints (nested + typed + ordered)

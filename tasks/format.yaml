@@ -1,0 +1,261 @@
+module: format
+# IFEval / JSON-mode / FollowBench-style instruction following, scored
+# deterministically against verifiable constraints. answer_type 'json' fails
+# hard to 0 when the output is not valid JSON; 'system_adherence' checks that a
+# long system prompt's rules were all honored.
+#
+# Two constructs merged in here in v0.13, both because they are the same thing
+# this module already measures — output that conforms to a declared shape.
+#
+# `data_extract` (de_*) was a module of its own: JSON extraction from prose,
+# graded by per-field fuzzy matching rather than by the constraint engine.
+# Three tasks, none discriminating, mean pass 0.92. Dispatch is on the task
+# declaring `expected.extracted`, not on the file.
+#
+# `tool_arg_typing` (fm_35) was a module of its own too, and its founding rule
+# survives the move because it records a measurement, not a preference:
+#
+#   The v0.11 audit found the type-strictness rule in `tools` was splitting
+#   models by vendor rather than capability (gemma 0.93, LFM 0.67, qwen 0.04,
+#   ornith 0.00, with no relationship to size). The rule was moved to its own
+#   module — and the first version of tat_03 promptly reproduced the same
+#   defect, because it demanded a quoted number through `kv_set`, whose schema
+#   declares `value` as "any type". It split exactly the same way: gemma/LFM
+#   3/3, qwen/ornith 0/3.
+#
+#   The measurement that settled it: every model in the fleet, down to a 0.8B,
+#   passes a task that needs a schema-declared `integer` and `boolean`. Nobody
+#   struggles to emit typed scalars when the schema says what the type is. So a
+#   model storing 5432 rather than "5432" in an untyped field has made a
+#   choice, not a mistake, and grading that choice measures the chat template.
+#
+#   RULE: grade a type ONLY where a schema declares it, so that getting it
+#   wrong is something a real API would reject with a 400. Never invent a type
+#   requirement in prompt text alone.
+#
+# tat_01 and tat_02 were deleted (0.97, no discrimination); tat_03 is a
+# multi-turn tool episode and moved to tools.yaml, which is the only module
+# that can run one.
+tasks:
+
+  # --- JSON mode under 13 simultaneous constraints (nested + typed + ordered)
+  - id: fm_22
+    fast: false
+    difficulty: hard
+    band: anchor
+    answer_type: json
+    prompt: "Return ONLY one JSON object and nothing else — no code fences, no commentary. It must have exactly these keys: \"service\" (the string \"payments\"), \"replicas\" (the integer 3, not a string), \"regions\" (an array of exactly the two strings \"eu-west\" then \"eu-south\", in that order), \"limits\" (an object with the integer keys \"cpu\" set to 2 and \"memory_mb\" set to 512), \"enabled\" (the boolean true), \"notes\" (a string that contains the word canary and no commas), and \"port\" (the STRING \"8080\" in quotes, NOT a number). Include no keys beyond those seven."
+    constraints:
+      - {type: valid_json}
+      - {type: json_value, path: service, value: "payments"}
+      - {type: json_value, path: replicas, value: 3}
+      - {type: json_path_type, path: replicas, expected: integer}
+      - {type: json_array_len, path: regions, value: 2}
+      - {type: json_value, path: "regions.0", value: "eu-west"}
+      - {type: json_value, path: "regions.1", value: "eu-south"}
+      - {type: json_value, path: limits.cpu, value: 2}
+      - {type: json_value, path: limits.memory_mb, value: 512}
+      - {type: json_path_type, path: limits.memory_mb, expected: integer}
+      - {type: json_value, path: enabled, value: true}
+      - {type: json_path_type, path: notes, expected: string}
+      - {type: contains, value: "canary"}
+      - {type: not_contains, value: "```"}
+      # Hardened in v0.12: every model passed. The prompt already demanded that
+      # `notes` carry no commas and nothing checked it, and a model could pass
+      # the whole task by uniformly preferring native JSON types. `port` is a
+      # string of digits precisely so that uniform preference fails.
+      - {type: json_value, path: port, value: "8080"}
+      - {type: json_path_type, path: port, expected: string}
+      - {type: json_exact_keys, keys: [service, replicas, regions, limits, enabled, notes, port]}
+      - {type: json_path_not_contains, path: notes, value: ","}
+
+  # --- extraction from prose (was the `data_extract` module until v0.13) ----
+  # Graded by per-field fuzzy match against `expected.extracted`, not by the
+  # constraint engine — see score_task's format branch.
+  # --- medium: 2-3 field extraction ----------------------------------------
+  - id: de_07
+    fast: false
+    difficulty: hard
+    band: mid
+    answer_type: json
+    prompt: |
+      Extract the single primary action item from these notes and return a JSON
+      object with keys: "owner" (person responsible), "deadline" (date string),
+      "deliverable" (what must be produced), "blocker" (any stated blocker, or null
+      if none mentioned). Return ONLY the JSON object.
+
+      Notes: "Final report must be delivered to the client by Alice before July 15.
+      She noted that the data pipeline is still broken and may delay submission."
+    expected:
+      # The notes phrase both of these inside longer clauses ("Final report must
+      # be delivered to the client", "the data pipeline is still broken and may
+      # delay submission"), so a MORE faithful extraction scored 0.8 by
+      # containment and three models never passed this task on any trial. The
+      # accepted variants are what the source text actually supports.
+      extracted:
+        owner: "Alice"
+        deadline: "July 15"
+        deliverable: "Final report"
+        blocker: "data pipeline is still broken"
+      accept:
+        deliverable:
+          - "Final report delivered to the client"
+          - "Deliver final report to the client"
+          - "report"
+        blocker:
+          - "data pipeline is still broken and may delay submission"
+          - "the data pipeline is still broken"
+          - "data pipeline is broken"
+
+  # --- shape that depends on the data, not just on the schema ---------------
+  # fm_22 resisted three hardening passes because flat schema conformance is
+  # solved: grammar-constrained decoding emits a fixed key set correctly every
+  # time. The difficulty here is a BRANCH — one object must carry `errors` and
+  # the other must omit the key entirely, from the same instruction — which
+  # constrained decoding cannot shortcut, because the shape is not fixed.
+  #
+  # `band` is deliberately unset on every task added in v0.13: bands are
+  # assigned from measurement, and these have not been measured yet.
+  - id: fm_31
+    fast: false
+    difficulty: hard
+    answer_type: json
+    what_this_tests: "Emitting a key on one object and omitting it on another, from one rule."
+    failure_mode: "Emits `errors` on both objects as null or [], or drops it from both."
+    prompt: |
+      Return ONLY a JSON array of exactly two objects, one per batch below, in
+      the order given. No code fences, no commentary.
+
+      Each object has:
+        "batch"  — the batch letter, as a string
+        "count"  — the integer number of records in that batch, failures included
+        "errors" — an array of the ids that failed, in the order they appear
+
+      Include "errors" ONLY when that batch had at least one failure. When a
+      batch had none, leave the key out of that object entirely — not null, not
+      an empty array. Add no other keys.
+
+      Batch A: R-11 ok, R-12 FAILED, R-13 ok
+      Batch B: R-21 ok, R-22 ok
+    constraints:
+      - {type: valid_json}
+      - {type: json_array_len, path: "", value: 2}
+      - {type: json_value, path: "0.batch", value: "A"}
+      - {type: json_value, path: "0.count", value: 3}
+      - {type: json_path_type, path: "0.count", expected: integer}
+      - {type: json_array_len, path: "0.errors", value: 1}
+      - {type: json_value, path: "0.errors.0", value: "R-12"}
+      - {type: json_path_exact_keys, path: "0", keys: [batch, count, errors]}
+      - {type: json_value, path: "1.batch", value: "B"}
+      - {type: json_value, path: "1.count", value: 2}
+      # The whole task: batch B had no failures, so it carries no `errors` key.
+      - {type: json_path_exact_keys, path: "1", keys: [batch, count]}
+      - {type: not_contains, value: "```"}
+
+  # --- declared-type conformance (was the `tool_arg_typing` module) ---------
+  # tat_01 and tat_02 graded types a TOOL schema declared and both sat at 0.97.
+  # This grades types a schema stated in the prompt declares, under the same
+  # founding rule in this file's header: every type checked here is one the
+  # schema names, so getting it wrong is something a real API rejects with a
+  # 400. No type requirement is invented in prose alone.
+  #
+  # The values are chosen so that no uniform preference passes. A model that
+  # prefers native JSON types turns "0042" into 42 and loses; a model that
+  # quotes everything loses `version`, `enabled` and `timeout_seconds`; a model
+  # that reads "the tag" as singular emits a bare string where the schema says
+  # array. `retries: 0` is there because a model emitting `false` would satisfy
+  # a naive equality check — json_path_type is what catches it.
+  - id: fm_35
+    fast: true
+    difficulty: hard
+    answer_type: json
+    what_this_tests: "Honouring six declared JSON types that pull in different directions."
+    failure_mode: "Coerces the zero-padded build number to an integer, or emits the single tag as a bare string."
+    prompt: |
+      Return ONLY one JSON object and nothing else — no code fences, no
+      commentary. It must have exactly these keys, with exactly these types:
+
+        "version"          integer  — 3
+        "build"            string   — 0042, keeping the leading zeros
+        "enabled"          boolean  — the build is enabled
+        "tags"             array of string — there is one tag, beta
+        "timeout_seconds"  number   — two and a half seconds
+        "retries"          integer  — none are configured
+
+      Include no keys beyond those six.
+    constraints:
+      - {type: valid_json}
+      - {type: json_exact_keys, keys: [version, build, enabled, tags, timeout_seconds, retries]}
+      - {type: json_value, path: version, value: 3}
+      - {type: json_path_type, path: version, expected: integer}
+      - {type: json_value, path: build, value: "0042"}
+      - {type: json_path_type, path: build, expected: string}
+      - {type: json_value, path: enabled, value: true}
+      - {type: json_path_type, path: enabled, expected: boolean}
+      - {type: json_path_type, path: tags, expected: array}
+      - {type: json_array_len, path: tags, value: 1}
+      - {type: json_value, path: "tags.0", value: "beta"}
+      - {type: json_value, path: timeout_seconds, value: 2.5}
+      - {type: json_path_type, path: timeout_seconds, expected: number}
+      - {type: json_value, path: retries, value: 0}
+      - {type: json_path_type, path: retries, expected: integer}
+      - {type: not_contains, value: "```"}
+
+  # --- glossary translation + automation-actor attribution -----------------
+  # v0.16: probed against production complexity (an invented logistics-ticket
+  # domain, structurally isomorphic to a real SaaS work-order summarization
+  # feature the user runs, not reproduced here). Two sibling candidates from
+  # the same round (fm_82, fm_83) saturated 3/3 for every model once designed
+  # honestly — see research/task-ideas-production-complexity-v2.md — so this
+  # is the one mechanism from that round that actually transfers.
+  #
+  # Probed twice (cycle 1 + reprobe to 5 trials, then a fresh cycle 3):
+  # gap +0.40 (2/5, 2/5, 4/5) then +0.67 (0/3, 2/3, 2/3) — never saturates,
+  # never inverts, but the exact weak/mid/strong boundary moves between the
+  # two runs. Every miss is the same mechanism: the model drops the client
+  # name from a terse two-line answer format rather than mistranslating the
+  # product name, leaking the raw status enum, or misattributing the
+  # automation actor — those three held at 3/3 for all three models, both
+  # runs. Confirm on the fleet sweep before trusting the exact split.
+  - id: fm_81
+    fast: false
+    difficulty: hard
+    band: mid
+    # `constraint`, not a bespoke name: the module's answer_type set is closed
+    # on purpose, and this task is prose graded by the constraint engine like
+    # any other. Scoring is identical either way — `score_format` special-cases
+    # only `json` — so the bespoke label bought nothing and broke the schema test.
+    answer_type: constraint
+    what_this_tests: "Translating free text and status codes to plain Portuguese while leaving proper nouns, codes, and the product name verbatim, and correctly attributing an automated action to the automation rather than a person."
+    failure_mode: "Translates or drops the product name 'SentinelTrack', prints the raw enum 'COMPLETED_VERIFIED' instead of plain language, writes AutoDispatch's action as if a colleague performed it, or drops the client name from the terse requested format."
+    prompt: |
+      Summarize this shipment ticket in Portuguese. Rules:
+
+      - Translate free text (descriptions) to Portuguese. Never translate proper
+        nouns, client names, codes, or the product name "SentinelTrack" — copy
+        them exactly, accents included.
+      - "SentinelTrack" is a product name: write it verbatim plus the Portuguese
+        word for "tracking" or "rastreio". Never write a translated substitute
+        alone.
+      - Status codes (e.g. COMPLETED_VERIFIED) are internal values — never print
+        one verbatim; always render it in plain Portuguese.
+      - "AutoDispatch" is the platform's own automation, not a colleague. When
+        AutoDispatch performed an action, say it happened automatically (e.g.
+        "verificado automaticamente pelo AutoDispatch"). Never substitute a
+        human name for it, and never drop the action.
+      - Plain text labels only, no bold or other decoration.
+
+      Ticket data:
+        cargo_type: "Refrigerated Cargo - Temperature Excursion"
+        client: "Nordic Freight AB (link 552)"
+        state: "COMPLETED_VERIFIED"
+        created_by: "Elin Kask"
+        verified_by: "AutoDispatch"
+        tracking_checklist: "SentinelTrack — PASSED"
+
+      Write two lines: "State: ..." and "People involved: ...".
+    constraints:
+      - {type: contains, all: ["Nordic Freight AB", "Elin Kask", "SentinelTrack"]}
+      - {type: not_contains, all: ["COMPLETED_VERIFIED", "**"]}
+      - {type: regex, pattern: "automatic"}
+      - {type: contains, any: ["AutoDispatch"]}

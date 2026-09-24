@@ -1,0 +1,234 @@
+module: code
+# HumanEval/MBPP-style function generation plus SWE-bench/Aider-style code repair
+# (buggy_code shipped to the model to fix). Scored by executing test cases, with
+# repair_attempts execute-and-fix rounds (see modules/code.py).
+tasks:
+
+  # --- write from scratch: kept distinct keepers ---------------------------
+  - id: cd_15
+    repair_attempts: 3
+    fast: true
+    difficulty: hard
+    band: mid
+    prompt: "Write a Python function `eval_rpn(tokens)` that evaluates an arithmetic expression in Reverse Polish Notation given as a list of string tokens (operators '+', '-', '*', '/'), returning an integer; division truncates toward zero. Respond with a single Python code block containing only the function."
+    function_name: eval_rpn
+    test_cases:
+      - {args: [["2", "1", "+", "3", "*"]], expected: 9}
+      - {args: [["4", "6", "+"]], expected: 10}
+      - {args: [["5", "1", "2", "+", "4", "*", "+", "3", "-"]], expected: 14}
+      - {args: [["10", "2", "/"]], expected: 5}
+      - {args: [["3", "4", "-"]], expected: -1}
+
+  # --- long-context repair: the fix depends on another file ---------------
+  - id: cd_21
+    repair_attempts: 3
+    fast: false
+    difficulty: hard
+    band: mid
+    prompt: "Fix the function `apply_discount(price, code)` in pricing/billing.py. It must look up the discount rate for `code` in DISCOUNT_CODES (see pricing/constants.py), never apply more than MAX_DISCOUNT, treat an unknown code as no discount, and return the final price rounded to 2 decimals. Respond with a single Python code block containing the corrected function plus any imports it needs."
+    function_name: apply_discount
+    context_files:
+      pricing/constants.py: |
+        # Central pricing configuration.
+        DISCOUNT_CODES = {"SAVE10": 0.10, "VIP": 0.25, "HALF": 0.50, "MEGA": 0.80}
+        MAX_DISCOUNT = 0.50  # business rule: never discount more than 50%
+      pricing/models.py: |
+        from dataclasses import dataclass
+
+        @dataclass
+        class Order:
+            id: int
+            customer: str
+            subtotal: float
+            code: str | None = None
+
+        @dataclass
+        class LineItem:
+            sku: str
+            qty: int
+            unit_price: float
+      pricing/utils.py: |
+        def format_money(amount: float) -> str:
+            return f"${amount:,.2f}"
+
+        def parse_money(text: str) -> float:
+            return float(text.replace("$", "").replace(",", ""))
+    buggy_code: |
+      def apply_discount(price, code):
+          # always applies a flat 10% and ignores the code table
+          return round(price * 0.9, 2)
+    test_cases:
+      - {args: [100, "HALF"], expected: 50.0}
+      - {args: [100, "VIP"], expected: 75.0}
+      - {args: [100, "MEGA"], expected: 50.0}
+      - {args: [100, "NOPE"], expected: 100.0}
+    regression_cases:
+      - {args: [100, "SAVE10"], expected: 90.0}
+
+  # --- multi-file repair + edge case the naive fix misses ------------------
+  # The rate table, the fallback and the rounding precision all live in a second
+  # file, and the country code arrives in mixed case.
+  - id: cd_23
+    # One shot only. Every code trial in the bank passes, so `success` carried
+    # no signal at all — but attempts_used spanned 1.00 to 0.53 one-shot rates
+    # across six models, a real capability gradient that repair was absorbing.
+    # cd_23 and cd_27 are the two the small models actually fail, so they carry
+    # the most information; the other three keep three attempts, because
+    # SWE-bench-style iteration is legitimate agent behaviour and the point is
+    # to have both measurements.
+    repair_attempts: 1
+    fast: false
+    difficulty: hard
+    band: mid
+    prompt: "Fix the function `total_with_tax(subtotal, country)` in billing/invoice.py. It must look up the country's VAT rate in TAX_RATES (see billing/rates.py), accept the country code in any letter case, fall back to DEFAULT_RATE for a country that is not in the table, and return the subtotal plus tax rounded to ROUNDING decimal places. Respond with a single Python code block containing the corrected function plus any imports it needs."
+    function_name: total_with_tax
+    context_files:
+      billing/rates.py: |
+        # VAT configuration. Country codes are stored upper-case.
+        TAX_RATES = {"PT": 0.23, "ES": 0.21, "DE": 0.19}
+        DEFAULT_RATE = 0.20  # used for countries not in the table
+        ROUNDING = 2         # money is rounded to this many decimals
+      billing/models.py: |
+        from dataclasses import dataclass
+
+        @dataclass
+        class Invoice:
+            id: int
+            customer: str
+            subtotal: float
+            country: str
+      billing/utils.py: |
+        def format_money(amount: float) -> str:
+            return f"{amount:,.2f}"
+    buggy_code: |
+      def total_with_tax(subtotal, country):
+          # hardcodes the Portuguese rate and ignores the rate table entirely
+          return round(subtotal * 1.23, 2)
+    test_cases:
+      - {args: [100, "PT"], expected: 123.0}
+      - {args: [100, "es"], expected: 121.0}
+      - {args: [100, "XX"], expected: 120.0}
+      - {args: [99.99, "DE"], expected: 118.99}
+    regression_cases:
+      - {args: [200, "PT"], expected: 246.0}
+
+  # --- recovery probe: attempt 1 almost always misses the import ------------
+  # Everything the fix needs lives in a second file, so a model that writes the
+  # right body without pulling the names in raises NameError at import time.
+  # That is the exact shape the repair loop exists to distinguish from "cannot
+  # solve it": the execution error is unambiguous and one line long.
+  - id: cd_27
+    # One shot only. Every code trial in the bank passes, so `success` carried
+    # no signal at all — but attempts_used spanned 1.00 to 0.53 one-shot rates
+    # across six models, a real capability gradient that repair was absorbing.
+    # cd_23 and cd_27 are the two the small models actually fail, so they carry
+    # the most information; the other three keep three attempts, because
+    # SWE-bench-style iteration is legitimate agent behaviour and the point is
+    # to have both measurements.
+    repair_attempts: 1
+    fast: true
+    difficulty: hard
+    band: mid
+    # v0.12: description corrected to match what this task actually grades.
+    # It used to claim it measured recovery from a readable runtime error, but
+    # `repair_attempts: 1` (set in v0.11 to put a one-shot gradient in the
+    # verdict) leaves no attempt to recover in — and the prompt asked for "only
+    # the corrected function" while the harness registers the context files as
+    # importable modules, so the constants resolved to a NameError unless the
+    # model emitted an import the prompt appeared to forbid. Across the fleet
+    # that single line decided everything: 9/9 trials that imported passed,
+    # 0/21 that did not. The six pricing rules below were never being measured.
+    # cd_21 keeps the recover-from-an-error construct, and does it properly —
+    # same context files, `repair_attempts: 3`, and 12 of its 26 passes came
+    # after reading the error.
+    what_this_tests: "Multi-rule numeric logic in one shot: zone lookup with a default, a threshold surcharge, and a hard cost cap."
+    failure_mode: "Applies the surcharge at the boundary instead of strictly above it, or forgets the cap."
+    prompt: "Fix the function `shipping_cost(weight_kg, zone)` in shipping/quote.py. It must charge BASE_FEE plus weight_kg times the zone's rate from ZONE_RATES (see shipping/rates.py), fall back to DEFAULT_RATE for an unknown zone, add HEAVY_SURCHARGE when weight_kg is strictly above HEAVY_KG, never charge more than MAX_COST, and return the total rounded to 2 decimals. Respond with a single Python code block containing the corrected function plus any imports it needs."
+    function_name: shipping_cost
+    context_files:
+      shipping/rates.py: |
+        # Shipping configuration. Zone codes are stored upper-case.
+        ZONE_RATES = {"EU": 2.5, "US": 4.0, "APAC": 6.5}
+        DEFAULT_RATE = 5.0      # zones not in the table
+        BASE_FEE = 3.0          # charged on every shipment
+        HEAVY_KG = 20.0         # above this weight the surcharge applies
+        HEAVY_SURCHARGE = 12.0
+        MAX_COST = 150.0        # hard cap, applied last
+      shipping/models.py: |
+        from dataclasses import dataclass
+
+        @dataclass
+        class Shipment:
+            id: int
+            weight_kg: float
+            zone: str
+      shipping/utils.py: |
+        def format_kg(weight: float) -> str:
+            return f"{weight:.1f} kg"
+    buggy_code: |
+      def shipping_cost(weight_kg, zone):
+          # flat EU pricing, ignores the zone table, the surcharge and the cap
+          return round(3.0 + weight_kg * 2.5, 2)
+    test_cases:
+      - {args: [10, "US"], expected: 43.0}
+      - {args: [10, "MARS"], expected: 53.0}
+      - {args: [25, "EU"], expected: 77.5}
+      - {args: [20, "EU"], expected: 53.0}
+      - {args: [100, "APAC"], expected: 150.0}
+    regression_cases:
+      - {args: [10, "EU"], expected: 28.0}
+
+  # --- repair judged by a regression suite, not by the failing test ---------
+  # cd_21, cd_23 and cd_27 each carry exactly ONE regression case, so
+  # over-fitting to the failing test goes unpunished — the property SWE-bench's
+  # PASS_TO_PASS set exists to catch. Five here, and the naive rewrites break
+  # them: a bare `int(text)` in a try/except loses the compound forms, and a
+  # `re.findall` that sums whatever units it happens to see returns 0 for
+  # garbage instead of None.
+  #
+  # `band` is deliberately unset on every task added in v0.13: bands are
+  # assigned from measurement, and these have not been measured yet.
+  - id: cd_31
+    # 12288, up from the code module default of 6144. Ling-3.0-Tiny lost two
+    # of three trials and LFM2.5-2.6B one, all at exactly 18,432 completion
+    # tokens — which is 3 x 6144, i.e. every one of the three repair
+    # attempts maxed out. This task has been mis-capped since long before
+    # v1.0; the cap is per REQUEST, and a repair loop makes three of them.
+    max_tokens: 12288
+    repair_attempts: 3
+    fast: true
+    difficulty: hard
+    what_this_tests: "Generalising a parser without breaking the cases that already worked."
+    failure_mode: "Handles the new formats but returns 0 rather than None for unparseable text, or loses the plain-minutes case."
+    prompt: |
+      Fix the function `parse_duration(text)` below. It must return the total
+      number of whole seconds a duration string represents:
+
+      - a unit string combining any of hours, minutes and seconds in that
+        order, e.g. "2h", "5m", "90s", "1h30m", "1h30m20s"
+      - a string of digits on its own, which means seconds, e.g. "45"
+      - anything it cannot parse — empty string, letters, an unknown unit —
+        must return None rather than raising or returning 0
+
+      Respond with a single Python code block containing the corrected function
+      plus any imports it needs.
+    function_name: parse_duration
+    buggy_code: |
+      def parse_duration(text):
+          # only understands a whole number of minutes, e.g. "5m"
+          return int(text[:-1]) * 60
+    test_cases:
+      - {args: ["1h30m"], expected: 5400}
+      - {args: ["90s"], expected: 90}
+      - {args: ["45"], expected: 45}
+      - {args: ["2h"], expected: 7200}
+      - {args: ["1h30m20s"], expected: 5420}
+    regression_cases:
+      # The one case the buggy version already got right, plus the four that a
+      # too-eager rewrite silently changes.
+      - {args: ["5m"], expected: 300}
+      - {args: ["0"], expected: 0}
+      - {args: [""], expected: null}
+      - {args: ["abc"], expected: null}
+      - {args: ["5x"], expected: null}
+

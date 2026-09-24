@@ -1,0 +1,79 @@
+# Retired tasks, kept ONLY as test fixtures — NOT part of the bank.
+#
+# v0.15 cut the bank from 59 tasks to 40 (see CHANGELOG). Nineteen tasks left
+# because they carried no ranking signal, but a large part of the scorer test
+# suite used them as fixtures: `tl_26` pins the derived-figure grading path,
+# `tl_33` and `tst_10` pin the waste budget, `ds_14`/`ds_15` pin the
+# ask-vs-answer contrast, `adv_11` pins over-refusal. Deleting them would have
+# deleted that coverage with them.
+#
+# So the definitions live on here, unchanged, and the tests load THIS directory
+# instead of tasks/. Nothing here is ever run against a model or counted in a
+# score: `load_tasks(..., tasks_dir=retired_bank_dir)` is the only reader.
+
+module: multi_turn_if
+tasks:
+  - id: mt_07
+    fast: false
+    difficulty: hard
+    band: mid
+    prompt: "5-turn meeting-notes dialogue with accumulating rules and a mid-conversation tightening revision."
+    conversation:
+      - prompt: "You are my meeting-notes assistant. Summarize this: 'Team agreed to ship the beta on Friday. Marketing wants two more days.' Two rules from now on: keep every reply at 60 words or fewer, and always refer to the team as 'the crew'."
+        constraints:
+          - {type: max_words, value: 60}
+          - {type: contains, value: "the crew"}
+      - prompt: "Add an action-items section as a bulleted list with at least two bullets. Keep all earlier rules."
+        constraints:
+          - {type: min_bullets, value: 2}
+      - prompt: "The deadline moved to Monday. Revise the notes. Two new rules from now on: never use the word 'deadline', and start every reply with 'Update:'."
+        constraints:
+          - {type: starts_with, value: "Update:"}
+          - {type: not_contains, value: "deadline"}
+      - prompt: "Tighten it: replies must now be at most 35 words. This replaces the earlier 60-word limit. Confirm the revised ship date."
+        constraints:
+          - {type: max_words, value: 35}
+      - prompt: "Give me the final version keeping every rule, and end your reply with the exact word 'Filed.'"
+        constraints:
+          - {type: ends_with, value: "Filed."}
+
+  # --- 5 turns: a banned word, then a later turn that all but demands it -----
+  # mt_07 tightens a numeric limit mid-conversation. This one tests the harder
+  # half of Multi-IF: a NEGATIVE rule set early, then a turn whose natural
+  # phrasing violates it (three more bugs reported) plus arithmetic over the
+  # list the model itself built. Nothing here is scored by the judge.
+  - id: mt_12
+    fast: true
+    difficulty: hard
+    band: mid
+    prompt: "4-turn inventory dialogue where a no-digits rule collides with every later question."
+    conversation:
+      - prompt: "You are my inventory assistant. We have twelve boxes of paper in the store room. One rule from now on: never write a numeral — spell every number out as a word."
+        constraints:
+          - {type: not_regex, pattern: "[0-9]"}
+      - prompt: "We used four boxes today. How many are left? Keep the rule."
+        constraints:
+          - {type: contains, value: "eight"}
+      - prompt: "A delivery of ten more boxes arrived. Give me the new total, and from now on also end every reply with the word 'Counted.'"
+        constraints:
+          - {type: contains, value: "eighteen"}
+          - {type: ends_with, value: "Counted."}
+      - prompt: "Summarise the whole day for me briefly, keeping every rule."
+        constraints:
+          # Not max_sentences: 'Counted.' from turn 3 is itself a sentence, so a
+          # one-sentence limit and the accumulated ending cannot both hold.
+          - {type: max_words, value: 40}
+
+  # --- 5 turns: a rule the user CANCELS partway through ---------------------
+  # Every other task in this module only ever adds or tightens rules, so
+  # accumulation models them. Retraction is the harder half of Multi-IF and
+  # was unexpressible until v0.13 added `revokes` — a turn-1 not_contains used
+  # to hold for the rest of the dialogue no matter what the user said next.
+  #
+  # Turn 3 both revokes the ban and REQUIRES the word from then on, so a model
+  # that keeps avoiding it fails just as surely as one that never obeyed. That
+  # symmetry is the point: over-applying a cancelled rule has to cost
+  # something, or the task only measures obedience.
+  #
+  # `band` is deliberately unset on every task added in v0.13: bands are
+  # assigned from measurement, and these have not been measured yet.
