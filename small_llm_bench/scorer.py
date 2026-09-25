@@ -167,12 +167,17 @@ for _mn in _cf_mods:
 for _mn in sorted(_cf_mods, key=lambda _s: _s.count(".")):
     _mod = _cf_types.ModuleType(_mn)
     _mod.__name__ = _mn
+    _mod.__package__ = _mn.rpartition(".")[0]
     exec(compile(_cf_mods[_mn], _mn, "exec"), _mod.__dict__)
     _cf_sys.modules[_mn] = _mod
     _parent = _mn.rpartition(".")[0]
     if _parent:
         setattr(_cf_sys.modules[_parent], _mn.rpartition(".")[2], _mod)
+__PACKAGE_LINE__
 """
+
+# Places the candidate in the context package so relative imports resolve.
+_PACKAGE_LINE_TEMPLATE = "__package__ = {package!r}"
 
 
 def _build_context_setup(context_files: dict[str, str] | None) -> str:
@@ -188,7 +193,13 @@ def _build_context_setup(context_files: dict[str, str] | None) -> str:
     }
     if not mods:
         return ""
-    return _CONTEXT_SETUP_TEMPLATE.replace("__PAYLOAD__", repr(json.dumps(mods)))
+    packages = {name.rpartition(".")[0] for name in mods}
+    package = packages.pop() if len(packages) == 1 else ""
+    package_line = (_PACKAGE_LINE_TEMPLATE.format(package=package)
+                    if package else "")
+    return (_CONTEXT_SETUP_TEMPLATE
+            .replace("__PAYLOAD__", repr(json.dumps(mods)))
+            .replace("__PACKAGE_LINE__", package_line))
 
 
 # Modules scored by extracting an answer from the response text. A response

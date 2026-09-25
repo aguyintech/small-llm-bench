@@ -1,7 +1,7 @@
 # Reference panel
 
-The published fleet: 23 models run on bench v1.0.0, 39 tasks × 3 trials each,
-judged. It is here so you can see the board without running anything, check
+The published fleet: 26 models graded on bench v1.0.1, 39 tasks × 3 trials
+each, judged. It is here so you can see the board without running anything, check
 the claims in the main README against the data, and place a new model among
 these without re-running them. The board is published from this directory at
 https://aguyintech.github.io/small-llm-bench/ on every push to `main`.
@@ -13,7 +13,7 @@ sllmb items --results-dir results/reference --judged       # item analysis, inte
 
 ## What is in it
 
-One `<model>_raw_results_judged.json` per model, about 1 MB each and 26 MB in
+One `<model>_raw_results_judged.json` per model, about 1 MB each and 28 MB in
 all. A judged file holds everything the raw run recorded (every trial's
 prompt, conversation turns, tool calls, final state, score breakdown, token
 counts and timings) plus the judge's score and reasoning, so no raw files are
@@ -24,7 +24,7 @@ the text of a few server error messages. Nothing else was edited.
 
 | | Models |
 |---|---|
-| 24B and up | qwen3.8-27b, gemma-4-31b, qwen3.6-27b-thinking-cap, qwen3.6-27b, muse-glimmer-30b, qwen3.6-35b-a3b (MoE, 3B active), ornith-1.5-35b (MoE, 3B active), gemma-4-26b-a4b (MoE, 3.8B active) |
+| 24B and up | qwen3.8-27b, qwen3.8-27b-GSQ-RCO, qwopus3.8-27b-v2, qwen3.8-27b-TURBO-Fable-Cold-Fusion, gemma-4-31b, qwen3.6-27b-thinking-cap, qwen3.6-27b, muse-glimmer-30b, qwen3.6-35b-a3b (MoE, 3B active), ornith-1.5-35b (MoE, 3B active), gemma-4-26b-a4b (MoE, 3.8B active) |
 | 7B – 23B | gemma-4-12b, qwen3.5-9b, neohorse-1-9b, gemma-4-e4b-it (MoE, 4B active), granite-4.2-8b, LFM2.5-8B-A1B (MoE, 1B active), Ling-3.0-Tiny (MoE, 1.3B active) |
 | 3B – 6B | neohorse-1-4b, qwen3.5-4b, gemma-4-e2b-it (PLE, 2.3B active), spark-x2.5-4b, granite-4.2-3b |
 | under 3B | minicpm5-2b, LFM2.5-2.6B, qwen3.5-0.8b |
@@ -32,7 +32,9 @@ the text of a few server error messages. Nothing else was edited.
 Sizes come from [`models.yaml`](../../models.yaml), taken from model cards.
 Fine-tunes are on the board next to their base model on purpose:
 `qwen3.6-27b-thinking-cap` is a fine-tune of `qwen3.6-27b`, and the
-`neohorse-1` models are post-trained from Qwen3.5. Whether a fine-tune beats
+`neohorse-1` models are post-trained from Qwen3.5. `qwopus3.8-27b-v2` and
+`qwen3.8-27b-TURBO-Fable-Cold-Fusion` are fine-tunes of `qwen3.8-27b`, and
+`qwen3.8-27b-GSQ-RCO` is a quantization of it. Whether a fine-tune beats
 its base is one of the questions the board is for. Read the pairwise table in
 `sllmb items` before answering it: at this bank size, most such gaps are ties.
 
@@ -63,7 +65,7 @@ Every row in this panel was produced with:
 - `--thinking`,
 - the server's default sampler with the default seed,
 - concurrency 1,
-- bench v1.0.0 and the same task bank hash.
+- bench v1.0.1 and the same task bank hash.
 
 The leaderboard checks all of these except concurrency, which affects only the
 speed columns. It does not check the endpoint: where your server lives says

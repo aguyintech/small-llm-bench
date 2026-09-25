@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "small-llm-bench"
-version = "1.0.0"
+version = "1.0.1"
 description = "Lightweight benchmark CLI for small local LLMs (1B-35B): tool calling, agentic loops, coding, knowledge."
 readme = "README.md"
 license = { text = "MIT" }

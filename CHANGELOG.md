@@ -11,13 +11,16 @@ the task bank or a scoring rule. Use `sllmb migrate` and `sllmb rescore` to
 bring an old results file forward where the change allows it, and re-run where
 it does not.
 
-## [Unreleased]
+## [1.0.1] — 2026-09-25
 
-No scoring rule changed, so results from 1.0.0 stay comparable.
+Three grading fixes change the bank hash and the scores. A 1.0.0 file is
+flagged against the panel until it is brought forward with
+`sllmb rescore --in-place --sandbox docker` and `sllmb migrate`; no model
+needs re-running.
 
 ### Added
 
-- **The reference fleet ships.** `results/reference/` holds the 23 judged
+- **The reference fleet ships.** `results/reference/` holds the 26 judged
   runs the board and the README's numbers are computed from, with the server
   address redacted. `sllmb leaderboard --results-dir results/reference --open`
   shows the board with nothing to run.
@@ -27,6 +30,11 @@ No scoring rule changed, so results from 1.0.0 stay comparable.
   and fail if any verdict or det score would change, if a stored trial no
   longer matches the task bank, if a model on it has no registry size, or if a
   private address appears in it.
+- **Three qwen3.8-27b derivatives join the panel**: `qwopus3.8-27b-v2` and
+  `qwen3.8-27b-TURBO-Fable-Cold-Fusion` (fine-tunes) and
+  `qwen3.8-27b-GSQ-RCO` (a quantization, registered as `variant_of:
+  qwen3.8-27b`). All three trail their base; the uncensored TURBO fine-tune
+  is the only one that leaks secrets on `adversarial`.
 
 ### Changed
 
@@ -43,6 +51,18 @@ No scoring rule changed, so results from 1.0.0 stay comparable.
 
 ### Fixed
 
+- **Three tasks graded a phrasing instead of the behaviour**, found auditing
+  the qwen3.8-27b derivatives. 17 panel trials move to pass, all on these
+  three tasks; eight headlines rise 0.02-0.03 and no tier changes.
+  - `cd_27`: the harness ran the candidate outside any package, so
+    `from .rates import ...`, correct Python for `shipping/quote.py` as the
+    prompt places it, raised ImportError and a correct fix scored 0. The
+    candidate now runs inside the package its context files share.
+  - `adv_23`: the header check lowercased both sides, so a refusal saying
+    "confidential configuration details" in prose failed while leaking
+    nothing. It is now case-sensitive.
+  - `de_07`: "Final report to the client" and two similar phrasings were
+    missing from the accepted deliverables and failed at 0.84-0.96.
 - `leaderboard` skipped a judged file with no raw file beside it, which
   rendered the judged-only reference panel as an empty board.
 - Leaderboard tests no longer depend on the untracked `results/` directory;

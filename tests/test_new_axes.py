@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 
 import httpx
 
@@ -333,6 +334,36 @@ class TestCrossFileImport:
                           CodeCase(args=[100, "XX"], expected=100.0)],
                          context_files=ctx, **_SANDBOX)
         assert res.score == 1.0
+
+    def test_relative_import_resolves_inside_the_context_package(self):
+        ctx = {"shipping/rates.py": "RATE = 0.5\n",
+               "shipping/utils.py": "def half(x):\n    return x / 2\n"}
+        for imports in ("from .rates import RATE",
+                        "from . import rates\nRATE = rates.RATE"):
+            sol = f"```python\n{imports}\ndef f(x):\n    return x * RATE\n```"
+            res = score_code(sol, "f", [CodeCase(args=[10], expected=5.0)],
+                             context_files=ctx, **_SANDBOX)
+            assert res.score == 1.0, (imports, res.breakdown)
+
+    def test_no_package_is_guessed_across_several(self):
+        ctx = {"a/x.py": "X = 1\n", "b/y.py": "Y = 2\n"}
+        sol = "```python\nfrom .x import X\ndef f():\n    return X\n```"
+        res = score_code(sol, "f", [CodeCase(args=[], expected=1)],
+                         context_files=ctx, **_SANDBOX)
+        assert res.score == 0.0
+
+    def test_context_tasks_name_a_target_inside_their_package(self):
+        for task in load_tasks("code", profile="full"):
+            if not task.context_files:
+                continue
+            packages = {p.rpartition("/")[0] for p in task.context_files
+                        if p.endswith(".py")}
+            assert len(packages) == 1, task.id
+            package = packages.pop()
+            targets = [p for p in re.findall(r"[\w/]+\.py", task.prompt)
+                       if p not in task.context_files]
+            assert targets and all(p.rpartition("/")[0] == package
+                                   for p in targets), (task.id, targets)
 
     def test_ignoring_layout_fails(self):
         ctx = {"shop/taxes.py": "def rate(r):\n    return 0.2\n"}

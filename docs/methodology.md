@@ -268,8 +268,8 @@ leaderboard flag the row. A partially judged row uses the deterministic score
 for the missing modules, which makes it a blend. Report coverage alongside a
 judged number, or use the raw file.
 
-**How much it moves.** On the 23-model reference fleet the judge changed 6
-verdicts out of 2,070 judged trials, all in `tools`. Treat it as a court that
+**How much it moves.** On the 26-model reference fleet the judge changed 7
+verdicts out of 2,340 judged trials, all in `tools`. Treat it as a court that
 rarely sits.
 
 ---

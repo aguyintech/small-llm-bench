@@ -101,6 +101,9 @@ tasks:
         deliverable:
           - "Final report delivered to the client"
           - "Deliver final report to the client"
+          - "Final report to the client"
+          - "Final report (to be delivered to the client)"
+          - "Final report delivery to the client"
           - "report"
         blocker:
           - "data pipeline is still broken and may delay submission"
