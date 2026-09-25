@@ -16,7 +16,7 @@ deterministically, and reports pass^3: a task counts only if the model gets it
 right three times out of three.
 
 **[→ Open the live leaderboard](https://aguyintech.github.io/small-llm-bench/)**:
-26 models, sortable, with a card for every model.
+27 models, sortable, with a card for every model.
 
 [![The leaderboard grouped into score tiers](docs/images/leaderboard.png)](https://aguyintech.github.io/small-llm-bench/)
 
@@ -117,7 +117,7 @@ one-line change.
 
 ### The reference fleet
 
-The 26 models on the board ship in [`results/reference/`](results/reference/),
+The 27 models on the board ship in [`results/reference/`](results/reference/),
 every trial of every task, judged. The [live leaderboard](https://aguyintech.github.io/small-llm-bench/)
 is built from them on every push; to open the same board locally:
 
@@ -152,7 +152,7 @@ settings" means, in [results/reference/README.md](results/reference/README.md).
    and no module may carry more than twice its share of the bank.
 4. **The optional LLM judge** reviews the agentic modules and can overturn a
    verdict only under strict rules. It never overrides a hard gate like a
-   forbidden tool call. On the reference fleet it changed 7 of 2,340 judged
+   forbidden tool call. On the reference fleet it changed 7 of 2,430 judged
    verdicts.
 
 Everything else, including each module's scorer, the judge rules and how to
@@ -162,8 +162,8 @@ read a scorecard, is in the [methodology](docs/methodology.md).
 
 A sorted table always looks more decisive than its evidence, so:
 
-- **It resolves tiers, not ranks.** On the 26-model reference fleet, 97 of 325
-  model pairs are statistically separable, and none of the 25 adjacent pairs
+- **It resolves tiers, not ranks.** On the 27-model reference fleet, 98 of 351
+  model pairs are statistically separable, and none of the 26 adjacent pairs
   are. A one-place difference is not a finding. `sllmb items` prints the
   intervals and the pairwise test for exactly this reason.
 - **It barely separates a 12B from a 27B.** One task (`tst_63`, a late

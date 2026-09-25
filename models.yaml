@@ -153,6 +153,14 @@ models:
       score read as a large model underperforming rather than a 3B-active
       MoE holding A tier. Same error class as the Ling-3.0-Tiny fix."
 
+  - name: Occamy-1.0
+    params_b: 35
+    active_b: 3
+    family: qwen
+    notes: "MoE fine-tune of Qwen3.6-35B-A3B (Accio-Lab/occamy-1.0): two
+      agentic experts (SFT+HDPO, SFT) merged back into one. 35B total / 3B
+      active, ranked by active params. Own weights, not a variant."
+
   - name: qwen3.6-27b-thinking-cap
     params_b: 27
     family: qwen

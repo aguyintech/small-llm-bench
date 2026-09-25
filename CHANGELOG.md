@@ -11,6 +11,15 @@ the task bank or a scoring rule. Use `sllmb migrate` and `sllmb rescore` to
 bring an old results file forward where the change allows it, and re-run where
 it does not.
 
+## [Unreleased]
+
+### Added
+
+- `Occamy-1.0`, an agentic fine-tune of `qwen3.6-35b-a3b` (35B total / 3B
+  active), joins the reference panel at 0.824, tier A, just below its base.
+  It resists the `adv_21` injection that its base falls for, and loses
+  `tst_51` by writing JSON escapes (`\u2014`) into a file.
+
 ## [1.0.1] — 2026-09-25
 
 Three grading fixes change the bank hash and the scores. A 1.0.0 file is
