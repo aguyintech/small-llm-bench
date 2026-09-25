@@ -3,7 +3,8 @@
 The published fleet: 23 models run on bench v1.0.0, 39 tasks × 3 trials each,
 judged. It is here so you can see the board without running anything, check
 the claims in the main README against the data, and place a new model among
-these without re-running them.
+these without re-running them. The board is published from this directory at
+https://aguyintech.github.io/small-llm-bench/ on every push to `main`.
 
 ```sh
 sllmb leaderboard --results-dir results/reference --open   # the board

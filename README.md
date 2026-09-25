@@ -15,7 +15,10 @@ vLLM, oMLX), simulates every tool so it runs air-gapped, grades
 deterministically, and reports pass^3: a task counts only if the model gets it
 right three times out of three.
 
-![The leaderboard: 23 models grouped into score tiers](docs/images/leaderboard.png)
+**[→ Open the live leaderboard](https://aguyintech.github.io/small-llm-bench/)**:
+23 models, sortable, with a card for every model.
+
+[![The leaderboard: 23 models grouped into score tiers](docs/images/leaderboard.png)](https://aguyintech.github.io/small-llm-bench/)
 
 ## Why another benchmark
 
@@ -115,7 +118,8 @@ one-line change.
 ### The reference fleet
 
 The 23 models on the board ship in [`results/reference/`](results/reference/),
-every trial of every task, judged. See the board without running anything:
+every trial of every task, judged. The [live leaderboard](https://aguyintech.github.io/small-llm-bench/)
+is built from them on every push; to open the same board locally:
 
 ```bash
 sllmb leaderboard --results-dir results/reference --open

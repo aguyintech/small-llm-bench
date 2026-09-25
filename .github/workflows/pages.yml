@@ -1,0 +1,60 @@
+name: leaderboard
+
+# Publishes the reference fleet's leaderboard to GitHub Pages:
+# https://aguyintech.github.io/small-llm-bench/
+#
+# Built from results/reference/ on every push to main, so the public page is
+# always the board the shipped data produces, and no generated HTML is
+# committed. The build is a single offline `sllmb leaderboard` call.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer push supersedes a queued one but never
+# interrupts a deployment that has already started.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -e .
+
+      - name: Build the leaderboard
+        run: |
+          mkdir -p _site
+          sllmb leaderboard --results-dir results/reference --output _site/index.html
+          test -s _site/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

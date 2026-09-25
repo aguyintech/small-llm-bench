@@ -21,6 +21,8 @@ No scoring rule changed, so results from 1.0.0 stay comparable.
   runs the board and the README's numbers are computed from, with the server
   address redacted. `sllmb leaderboard --results-dir results/reference --open`
   shows the board with nothing to run.
+- **The leaderboard is live** at https://aguyintech.github.io/small-llm-bench/,
+  rebuilt from `results/reference/` by a GitHub Pages workflow on every push.
 - **CI guards the published numbers.** The tests re-score the shipped panel
   and fail if any verdict or det score would change, if a stored trial no
   longer matches the task bank, if a model on it has no registry size, or if a
