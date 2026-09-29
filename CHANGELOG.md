@@ -11,13 +11,18 @@ the task bank or a scoring rule. Use `sllmb migrate` and `sllmb rescore` to
 bring an old results file forward where the change allows it, and re-run where
 it does not.
 
-## [1.0.2] \u2014 2026-09-29
+## [1.0.2] — 2026-09-29
 
 One grading fix changes the bank hash and five panel scores. A 1.0.1 file is
 flagged against the panel until it is brought forward with
 `sllmb rescore --in-place` and `sllmb migrate`; no model needs re-running.
 
 ### Added
+
+- `qwen3.8-27b-thinking-cap`, a fine-tune of `qwen3.8-27b`, joins the
+  reference panel at 0.920, tier S, below its base at 0.953 and level with
+  `qwen3.8-27b-GSQ-RCO`. The gap is one `mt_25` turn that leaks its reasoning
+  into the reply, plus `kn_18` and `fm_81`, which its base also misses.
 
 - `Occamy-1.0`, an agentic fine-tune of `qwen3.6-35b-a3b` (35B total / 3B
   active), joins the reference panel at 0.824, tier A, just below its base.

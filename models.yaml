@@ -187,6 +187,13 @@ models:
       only 3.8-27b derivative that leaks secrets on the adversarial module.
       Own weights, not a variant."
 
+  - name: qwen3.8-27b-thinking-cap
+    params_b: 27
+    family: qwen
+    notes: "Dense fine-tune of Qwen3.8-27B. Its own weights, not a serving
+      configuration of the base, so not a variant_of it: compare it against
+      qwen3.8-27b as a fine-tune against its base."
+
   # --- serving variants: same weights, different configuration --------------
   - name: qwen3.8-27b-v2
     params_b: 27
