@@ -72,6 +72,17 @@ def test_every_stored_trial_matches_the_current_task_bank(panel):
     assert stale == []
 
 
+def test_every_stored_trial_carries_the_rubric_the_judge_reads(panel):
+    """v1.0.1's rescore stored the bare task field, which left every
+    multi_turn_if trial on the panel with an empty rubric."""
+    rubric = {(m.name, t.id): m.recorded_expected(t)
+              for m in all_modules() for t in load_tasks(m.name, profile="full")}
+    wrong = sorted({f"{b.meta.model}:{r.task_id}" for b in panel
+                    for r in b.results
+                    if rubric.get((r.module, r.task_id)) != r.expected})
+    assert wrong == []
+
+
 def test_the_current_scorer_reproduces_every_published_grade(panel):
     """Re-grading the stored trials must change no verdict and no det score.
     `code` is left out without a sandbox, as `rescore` itself does."""

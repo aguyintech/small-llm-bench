@@ -107,8 +107,13 @@ tasks:
           - "report"
         blocker:
           - "data pipeline is still broken and may delay submission"
+          - "data pipeline is still broken and may delay submission."
+          - "the data pipeline is still broken and may delay submission"
+          - "the data pipeline is still broken and may delay submission."
           - "the data pipeline is still broken"
           - "data pipeline is broken"
+          - "the data pipeline is broken"
+          - "broken data pipeline"
 
   # --- shape that depends on the data, not just on the schema ---------------
   # fm_22 resisted three hardening passes because flat schema conformance is

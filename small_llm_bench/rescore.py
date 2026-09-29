@@ -29,11 +29,14 @@ from . import __version__
 from .judge import apply_judge_verdict, judge_anchor_is_stale
 from .models import BenchResult, Task, TaskResult, task_content_hash
 from .modules.base import load_tasks
+from .runner import all_modules
 from .scorer import score_task, truncation_class
 
 # Needs a live sandbox to re-execute candidate code, so it is skipped unless the
 # caller passes one explicitly.
 _SANDBOX_MODULES = frozenset({"code"})
+
+_MODULES = {m.name: m for m in all_modules()}
 
 
 class RescoreReport:
@@ -203,7 +206,7 @@ def _rescore_one(task: Task, result: TaskResult, sandbox: dict[str, Any] | None,
     # from `task`), but it IS what the judge is shown, so a stale copy would
     # hide a rubric change — including `not_graded`, which exists precisely to
     # stop the judge reimposing a criterion the task dropped.
-    result.expected = dict(task.expected)
+    result.expected = _MODULES[task.module].recorded_expected(task)
     was_success = result.success
     was_det_score, was_det_success = result.det_score, result.det_success
     scored = score_task(task, result, sandbox)

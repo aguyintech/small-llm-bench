@@ -336,6 +336,9 @@ class LongContextModule(BaseModule):
 
     name = "long_context"
 
+    def recorded_expected(self, task: Task) -> dict[str, Any]:
+        return {**task.expected, "answer_type": task.answer_type}
+
     async def run_task(self, client: "ChatClient", task: Task,
                        sandbox: dict[str, Any] | None = None) -> TaskResult:
         """Build the haystack, ask the question, and record the answer."""
@@ -349,7 +352,7 @@ class LongContextModule(BaseModule):
             task_id=task.id,
             module=self.name,
             prompt=task.prompt,
-            expected={**task.expected, "answer_type": task.answer_type},
+            expected=self.recorded_expected(task),
             response_raw=answer,
             turns=[TurnRecord(role="assistant", content=answer,
                               completion_tokens=completion_tokens(response),

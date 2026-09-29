@@ -40,6 +40,9 @@ class CodeModule(BaseModule):
 
     name = "code"
 
+    def recorded_expected(self, task: Task) -> dict[str, Any]:
+        return {"function_name": task.function_name}
+
     async def run_task(self, client: "ChatClient", task: Task,
                        sandbox: dict[str, Any] | None = None) -> TaskResult:
         """Ask the model for a function, then let it fix what it got wrong.
@@ -94,7 +97,7 @@ class CodeModule(BaseModule):
             task_id=task.id,
             module=self.name,
             prompt=task.prompt,
-            expected={"function_name": task.function_name},
+            expected=self.recorded_expected(task),
             response_raw=content,
             turns=turns,
             completion_tokens=tokens,

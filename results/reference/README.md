@@ -1,6 +1,6 @@
 # Reference panel
 
-The published fleet: 27 models graded on bench v1.0.1, 39 tasks × 3 trials
+The published fleet: 27 models graded on bench v1.0.2, 39 tasks × 3 trials
 each, judged. It is here so you can see the board without running anything, check
 the claims in the main README against the data, and place a new model among
 these without re-running them. The board is published from this directory at
@@ -66,7 +66,7 @@ Every row in this panel was produced with:
 - `--thinking`,
 - the server's default sampler with the default seed,
 - concurrency 1,
-- bench v1.0.1 and the same task bank hash.
+- bench v1.0.2 and the same task bank hash.
 
 The leaderboard checks all of these except concurrency, which affects only the
 speed columns. It does not check the endpoint: where your server lives says

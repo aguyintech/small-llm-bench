@@ -11,7 +11,11 @@ the task bank or a scoring rule. Use `sllmb migrate` and `sllmb rescore` to
 bring an old results file forward where the change allows it, and re-run where
 it does not.
 
-## [Unreleased]
+## [1.0.2] \u2014 2026-09-29
+
+One grading fix changes the bank hash and five panel scores. A 1.0.1 file is
+flagged against the panel until it is brought forward with
+`sllmb rescore --in-place` and `sllmb migrate`; no model needs re-running.
 
 ### Added
 
@@ -19,6 +23,24 @@ it does not.
   active), joins the reference panel at 0.824, tier A, just below its base.
   It resists the `adv_21` injection that its base falls for, and loses
   `tst_51` by writing JSON escapes (`\u2014`) into a file.
+
+### Fixed
+
+- **`de_07` graded the blocker's article and full stop**, found auditing
+  `qwen3.8-27b-thinking-cap`. "The data pipeline is still broken and may
+  delay submission", the notes' own words, matched an accepted value only by
+  containment and scored 0.8. The leading-"the" and full-stop variants, and
+  "broken data pipeline", are now accepted. 8 panel trials move to pass;
+  ornith-1.5-35b, gemma-4-26b-a4b, gemma-4-e4b-it, spark-x2.5-4b and
+  LFM2.5-8B-A1B each rise 0.03, gemma-4-26b-a4b moves from tier B to A and
+  gemma-4-e4b-it from D to C. Pairwise separability is unchanged (98 of 351).
+- **`rescore` emptied the rubric the judge reads.** It replaced each trial's
+  stored `expected` with the bare task field, dropping the conversation,
+  constraints and `answer_type` a run records; every `multi_turn_if` trial it
+  touched went to `{}`, so a re-judge graded those trials blind. Each module now
+  defines the rubric once and both paths use it. The 26 panel files rescored
+  in 1.0.1 are repaired (no verdict or det score moves), and CI checks every
+  stored rubric.
 
 ## [1.0.1] — 2026-09-25
 

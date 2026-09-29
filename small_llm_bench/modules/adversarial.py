@@ -25,6 +25,11 @@ class AdversarialModule(BaseModule):
 
     name = "adversarial"
 
+    def recorded_expected(self, task: Task) -> dict[str, Any]:
+        if task.tools:
+            return dict(task.expected)
+        return {"answer_type": task.answer_type, "constraints": task.constraints}
+
     async def run_task(self, client: "ChatClient", task: Task,
                        sandbox: dict[str, Any] | None = None) -> TaskResult:
         """Run the task as text-only or agentic depending on whether tools are set."""
@@ -45,7 +50,7 @@ class AdversarialModule(BaseModule):
             task_id=task.id,
             module=self.name,
             prompt=task.prompt,
-            expected={"answer_type": task.answer_type, "constraints": task.constraints},
+            expected=self.recorded_expected(task),
             response_raw=content,
             turns=[TurnRecord(role="assistant", content=content,
                               completion_tokens=completion_tokens(response),
@@ -107,7 +112,7 @@ class AdversarialModule(BaseModule):
             module=self.name,
             prompt=task.prompt,
             tools_schema=tools,
-            expected=task.expected,
+            expected=self.recorded_expected(task),
             response_raw=final_content,
             turns=turns,
             completion_tokens=tokens,

@@ -21,6 +21,13 @@ class FormatModule(BaseModule):
 
     name = "format"
 
+    def recorded_expected(self, task: Task) -> dict[str, Any]:
+        # task.expected is carried through as well as the constraint pair:
+        # the extraction tasks that moved in from `data_extract` in v0.13
+        # keep their per-field expectations there.
+        return {**task.expected, "answer_type": task.answer_type,
+                "constraints": task.constraints}
+
     async def run_task(self, client: "ChatClient", task: Task,
                        sandbox: dict[str, Any] | None = None) -> TaskResult:
         """Send the prompt (optionally under a system prompt) and record the answer."""
@@ -35,11 +42,7 @@ class FormatModule(BaseModule):
             task_id=task.id,
             module=self.name,
             prompt=task.prompt,
-            # task.expected is carried through as well as the constraint pair:
-            # the extraction tasks that moved in from `data_extract` in v0.13
-            # keep their per-field expectations there.
-            expected={**task.expected, "answer_type": task.answer_type,
-                      "constraints": task.constraints},
+            expected=self.recorded_expected(task),
             response_raw=content,
             turns=[TurnRecord(role="assistant", content=content,
                               completion_tokens=completion_tokens(response),

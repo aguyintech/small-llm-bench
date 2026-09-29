@@ -334,3 +334,32 @@ class TestGenerationFailuresAreNotRegraded:
         report = rescore_bench(_bench([trial]))
         assert report.rescored == 1
         assert report.skipped_error == []
+
+
+class TestStoredExpectedMatchesARun:
+    """The judge reads `expected` off the trial. Rescore used to replace it
+    with the bare task field, which for multi_turn_if is `{}`: the judge then
+    saw no rubric at all."""
+
+    def test_rescore_keeps_the_rubric_a_run_records(self):
+        from small_llm_bench.runner import all_modules
+
+        for module in all_modules():
+            if module.name == "code":
+                continue
+            for task in load_tasks(module.name, profile="full"):
+                recorded = module.recorded_expected(task)
+                turns = [TurnRecord(role="assistant", content="anything")
+                         for _ in (task.conversation or [None])]
+                trial = _trial(task, "anything", expected=dict(recorded),
+                               turns=turns)
+                rescore_bench(_bench([trial]))
+                assert trial.expected == recorded, task.id
+
+    def test_the_multi_turn_rubric_survives(self):
+        task = next(t for t in load_tasks("multi_turn_if", profile="full"))
+        turns = [TurnRecord(role="assistant", content="anything")
+                 for _ in task.conversation]
+        trial = _trial(task, "anything", expected={}, turns=turns)
+        rescore_bench(_bench([trial]))
+        assert trial.expected["conversation"]

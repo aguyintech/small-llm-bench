@@ -354,6 +354,10 @@ class BaseModule(ABC):
         return load_tasks(self.name, fast=fast, profile=profile,
                           tasks_dir=tasks_dir)
 
+    def recorded_expected(self, task: Task) -> dict[str, Any]:
+        """The rubric a trial stores as ``expected``, which the judge is shown."""
+        return dict(task.expected)
+
     @abstractmethod
     async def run_task(self, client: "ChatClient", task: Task,
                        sandbox: dict[str, Any] | None = None) -> TaskResult:

@@ -25,6 +25,9 @@ class MultiTurnIfModule(BaseModule):
 
     name = "multi_turn_if"
 
+    def recorded_expected(self, task: Task) -> dict[str, Any]:
+        return {"conversation": task.conversation}
+
     async def run_task(self, client: "ChatClient", task: Task,
                        sandbox: dict[str, Any] | None = None) -> TaskResult:
         """Walk the conversation turn by turn, keeping full history each call."""
@@ -64,7 +67,7 @@ class MultiTurnIfModule(BaseModule):
             task_id=task.id,
             module=self.name,
             prompt=task.prompt,
-            expected={"conversation": task.conversation},
+            expected=self.recorded_expected(task),
             response_raw=last_content,
             turns=turns,
             truncated=truncated,

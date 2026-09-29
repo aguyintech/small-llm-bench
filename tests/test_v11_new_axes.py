@@ -394,6 +394,20 @@ class TestGradingHabitFixes:
             result = score_data_extract(expected, reply)
             assert result.breakdown["per_field"]["deliverable"] == 1.0, deliverable
 
+    def test_de_07_accepts_the_blocker_as_the_notes_phrase_it(self):
+        from small_llm_bench.scorer import score_data_extract
+
+        expected = self._task("format", "de_07").expected
+        for blocker in ("The data pipeline is still broken and may delay submission",
+                        "The data pipeline is still broken and may delay submission.",
+                        "Data pipeline is still broken and may delay submission.",
+                        "The data pipeline is broken",
+                        "Broken data pipeline"):
+            reply = json.dumps({"owner": "Alice", "deadline": "July 15",
+                                "deliverable": "Final report", "blocker": blocker})
+            result = score_data_extract(expected, reply)
+            assert result.breakdown["per_field"]["blocker"] == 1.0, blocker
+
 
 class TestEveryBankConstraintIsWellFormed:
     """Fail closed on a mis-keyed constraint, the way unknown constraint *types*
