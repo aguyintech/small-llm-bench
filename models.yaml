@@ -24,6 +24,10 @@
 # them as ordinary rows; drop a variant's result file from the directory to
 # leave it off a published board.
 #
+# `base_model` records what a fine-tune was trained from. It is lineage only: a
+# fine-tune is its own weights, so unlike `variant_of` it stays in the
+# size-inversion check.
+#
 # A model absent from this file still runs and still scores. It shows `?` in
 # the params column and is skipped by the size-ordering check. Adding your own
 # model here is a one-line PR and does not touch any code.
@@ -56,6 +60,7 @@ models:
   - name: neohorse-1-4b
     params_b: 4
     family: neohorse
+    base_model: qwen3.5-4b
     notes: "Dense, post-trained from Qwen3.5-4B."
 
   - name: spark-x2.5-4b
@@ -102,6 +107,7 @@ models:
   - name: neohorse-1-9b
     params_b: 9
     family: neohorse
+    base_model: qwen3.5-9b
     notes: "Dense, post-trained from Qwen3.5-9B."
 
   - name: gemma-4-12b
@@ -157,6 +163,7 @@ models:
     params_b: 35
     active_b: 3
     family: qwen
+    base_model: qwen3.6-35b-a3b
     notes: "MoE fine-tune of Qwen3.6-35B-A3B (Accio-Lab/occamy-1.0): two
       agentic experts (SFT+HDPO, SFT) merged back into one. 35B total / 3B
       active, ranked by active params. Own weights, not a variant."
@@ -164,6 +171,7 @@ models:
   - name: qwen3.6-27b-thinking-cap
     params_b: 27
     family: qwen
+    base_model: qwen3.6-27b
     notes: "Dense, fine-tuned from Qwen3.6-27B. Its own weights, not a serving
       configuration of the base: comparing a fine-tune against its base model
       is one of the questions the board exists to answer. Recorded here as a
@@ -173,6 +181,7 @@ models:
   - name: qwopus3.8-27b-v2
     params_b: 27
     family: qwen
+    base_model: qwen3.8-27b
     notes: "Dense fine-tune, served as Jackrong/Qwopus3.8-27B-Flash-V2: a
       second RL post-training round on Qwopus3.8-27B-Flash, itself post-trained
       from Qwen3.8-27B. Its own weights, not a variant — compare it against
@@ -181,6 +190,7 @@ models:
   - name: qwen3.8-27b-TURBO-Fable-Cold-Fusion
     params_b: 27
     family: qwen
+    base_model: qwen3.8-27b
     notes: "Dense multi-stage fine-tune of Qwen3.8-27B by DavidAU (full name
       Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-...).
       Heretic = abliterated/uncensored, which is the likely reason it is the
@@ -190,6 +200,7 @@ models:
   - name: qwen3.8-27b-thinking-cap
     params_b: 27
     family: qwen
+    base_model: qwen3.8-27b
     notes: "Dense fine-tune of Qwen3.8-27B. Its own weights, not a serving
       configuration of the base, so not a variant_of it: compare it against
       qwen3.8-27b as a fine-tune against its base."

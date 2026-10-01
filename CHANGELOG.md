@@ -11,6 +11,27 @@ the task bank or a scoring rule. Use `sllmb migrate` and `sllmb rescore` to
 bring an old results file forward where the change allows it, and re-run where
 it does not.
 
+## [Unreleased]
+
+Presentation only; no score, bank or hash changes.
+
+### Added
+
+- The model modal can overlay up to two other models on its radar, picked
+  from a list grouped by same tier, same size and the rest, with a
+  per-module grid underneath.
+- A "By module" tab ranks the board on one module's pass^k (tools by
+  default), with tied scores sharing a rank. `#by-module/code` links
+  straight to a module.
+- `models.yaml` records a fine-tune's parent as `base_model`, set on the
+  seven fine-tunes whose base is also in the registry (e.g.
+  `qwen3.8-27b-thinking-cap` → `qwen3.8-27b`). It is lineage only and, unlike
+  `variant_of`, leaves the model in the size-inversion check.
+- `sllmb compare --speed` adds a table of server-reported prefill (pp) and
+  decode (tg) tok/s per module, each run's change over the first file, and
+  the prefix-cache share. It warns when the runs used different concurrency
+  or task sets.
+
 ## [1.0.2] — 2026-09-29
 
 One grading fix changes the bank hash and five panel scores. A 1.0.1 file is

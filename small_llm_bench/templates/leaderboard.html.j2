@@ -56,6 +56,11 @@
     --tier-D: #6bcdff; --tier-D-ink: var(--ink-dark);
     --tier-E: #b99cff; --tier-E-ink: var(--ink-dark);
     --tier-F: #ff9fe6; --tier-F-ink: var(--ink-dark);
+    /* Radar compare overlays: saturated, where the tier palette is pastel, so
+       they stay apart from the opened model's fill even when both share a
+       tier. The dash pattern tells them apart without colour. */
+    --cmp-1: #4f8dff;
+    --cmp-2: #e05cf0;
   }
   @media (prefers-color-scheme: light) {
     :root {
@@ -86,6 +91,8 @@
       --tier-D: #59baf8; --tier-D-ink: var(--ink-dark);
       --tier-E: #a386ee; --tier-E-ink: var(--ink-dark);
       --tier-F: #ef91d5; --tier-F-ink: var(--ink-dark);
+      --cmp-1: #1d5bd8;
+      --cmp-2: #a61cb8;
     }
   }
   * { box-sizing: border-box; }
@@ -183,6 +190,16 @@
   }
   .bar-value { font-size: 0.86rem; font-weight: 700; text-align: right;
     font-variant-numeric: tabular-nums; }
+  .bar-name .tier-chip { min-width: 1.2rem; height: 1.2rem; font-size: 0.66rem;
+    margin-right: 0.45rem; }
+
+  /* ---- by module ---- */
+  .module-pick { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem;
+    padding: 0.9rem 1rem 0.6rem; border-bottom: 1px solid var(--border);
+    font-size: 0.82rem; }
+  .module-pick label { font-weight: 600; }
+  .module-pick select { font-size: 0.84rem; padding: 0.35rem 0.6rem; }
+  .module-pick .module-note { color: var(--text-dim); font-size: 0.76rem; }
 
   /* ---- tab 2: one chart per tier ---- */
   /* Two tiers per row. `minmax(0, 1fr)` rather than `1fr`: a grid track's
@@ -335,6 +352,46 @@
     font-variant-numeric: tabular-nums; }
   .radar .ring-label { fill: var(--text-dim); font-size: 9px;
     font-variant-numeric: tabular-nums; }
+  .radar .area.cmp-1, .radar .area.cmp-2 { stroke-width: 2.5; }
+  .radar .area.cmp-1 { fill: color-mix(in srgb, var(--cmp-1) 12%, transparent);
+    stroke: var(--cmp-1); stroke-dasharray: 7 4; }
+  .radar .area.cmp-2 { fill: color-mix(in srgb, var(--cmp-2) 12%, transparent);
+    stroke: var(--cmp-2); stroke-dasharray: 2.5 3; }
+  .radar .vertex.cmp-1 { fill: var(--cmp-1); stroke-width: 1.5; }
+  .radar .vertex.cmp-2 { fill: var(--cmp-2); stroke-width: 1.5; }
+  .compare { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem;
+    margin: 0 0 0.8rem; font-size: 0.78rem; }
+  .compare-slot { display: inline-flex; align-items: center; gap: 0.4rem;
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: 999px; padding: 0.2rem 0.3rem 0.2rem 0.6rem; max-width: 100%; }
+  .compare-slot .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; min-width: 0; }
+  .compare-slot .val { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .swatch { width: 1.3rem; height: 0; border-top: 3px solid; flex-shrink: 0; }
+  .swatch.base { border-top: 6px solid var(--tc); border-radius: 2px; }
+  .swatch.cmp-1 { border-top-color: var(--cmp-1); border-top-style: dashed; }
+  .swatch.cmp-2 { border-top-color: var(--cmp-2); border-top-style: dotted; }
+  .compare button, .compare select, .module-pick select {
+    font: inherit; font-size: 0.78rem; color: var(--text);
+    background: var(--bg-elev); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0.25rem 0.55rem; cursor: pointer; max-width: 100%; }
+  .compare .slot-remove { border-radius: 999px; width: 1.4rem; height: 1.4rem;
+    padding: 0; line-height: 1; color: var(--text-dim); }
+  .compare button:hover, .compare select:hover { background: var(--row-hover); }
+  /* A div grid, not a <table>: the detailed table's sticky-column rules would
+     otherwise apply here. */
+  .compare-grid { display: grid; font-size: 0.78rem; margin: 0.2rem 0 0;
+    border-top: 1px solid var(--border); }
+  .compare-grid > div { padding: 0.3rem 0.5rem; text-align: right;
+    font-variant-numeric: tabular-nums; font-weight: 600;
+    border-bottom: 1px solid var(--border); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .compare-grid > .rh { text-align: left; font-weight: 500; color: var(--text-dim); }
+  .compare-grid > .ch { font-size: 0.66rem; text-transform: uppercase;
+    letter-spacing: 0.04em; color: var(--text-dim); display: flex;
+    justify-content: flex-end; align-items: center; gap: 0.35rem; }
+  .compare-grid > .best { color: var(--pos); }
+  .compare-grid > .ch .n { overflow: hidden; text-overflow: ellipsis; }
   .modal-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
     gap: 0.5rem; margin: 0.9rem 0 0; }
   .stat { background: var(--bg-elev); border: 1px solid var(--border);
@@ -362,6 +419,7 @@
     .bar-row { grid-template-columns: 1.6rem 1fr 3.2rem;
       grid-template-areas: "rank name value" ". bar bar"; gap: 0.35rem 0.6rem; }
     .bar-rank { grid-area: rank; }
+    .compare-grid > .ch .n { display: none; }
     .bar-name { grid-area: name; }
     .bar-value { grid-area: value; }
     .bar-track { grid-area: bar; }
@@ -385,6 +443,8 @@
             aria-controls="panel-by-tier" aria-selected="false" tabindex="-1">By tier</button>
     <button role="tab" id="tab-by-params" data-tab="by-params"
             aria-controls="panel-by-params" aria-selected="false" tabindex="-1">By params</button>
+    <button role="tab" id="tab-by-module" data-tab="by-module"
+            aria-controls="panel-by-module" aria-selected="false" tabindex="-1">By module</button>
     <button role="tab" id="tab-detailed" data-tab="detailed"
             aria-controls="panel-detailed" aria-selected="false" tabindex="-1">Detailed</button>
   </div>
@@ -399,6 +459,17 @@
 
   <div class="panel" id="panel-by-params" role="tabpanel" aria-labelledby="tab-by-params" hidden>
     <div class="tier-panels param-grid" id="param-panels"></div>
+  </div>
+
+  <div class="panel" id="panel-by-module" role="tabpanel" aria-labelledby="tab-by-module" hidden>
+    <div class="card">
+      <div class="module-pick">
+        <label for="module-pick">Rank by module</label>
+        <select id="module-pick"></select>
+        <span class="module-note" id="module-note"></span>
+      </div>
+      <div class="board" id="module-bars"></div>
+    </div>
   </div>
 
   <div class="panel" id="panel-detailed" role="tabpanel" aria-labelledby="tab-detailed" hidden>
@@ -722,9 +793,58 @@
     }
   }
 
+  /* ---------- tab 4: one module, ranked ---------- */
+
+  let currentModule = modules.includes("tools") ? "tools" : modules[0];
+  const modulePick = document.getElementById("module-pick");
+  modulePick.innerHTML = modules.map((m) =>
+    `<option value="${esc(m)}">${esc(MODULE_LABELS[m] || m)}</option>`).join("");
+
+  // Flat, not grouped by tier: the tiers are cut on the headline, so they say
+  // nothing about one module. The chip stays on each row as context.
+  function renderModuleBars() {
+    modulePick.value = currentModule;
+    document.getElementById("module-note").textContent = JUDGE_SKIPPED.has(currentModule)
+      ? `Never sent to the judge: scores are deterministic pass^${data.headline_k}.`
+      : `Judged pass^${data.headline_k} on this module alone.`;
+    const ranked = rows.map((row) => ({ row, value: moduleValue(row, currentModule) }))
+      .sort((a, b) => (a.value === null) - (b.value === null) || (b.value || 0) - (a.value || 0));
+    // Ties share a rank: module scores cluster at 100, and 1..5 among equal
+    // bars would read as an order the data does not have.
+    const body = ranked.map(({ row, value }) => {
+      const rank = 1 + ranked.filter((o) => o.value !== null && o.value > value).length;
+      const cell = row.modules[currentModule];
+      const unjudged = value !== null && !JUDGE_SKIPPED.has(currentModule)
+        && (cell.judge_pass === undefined || cell.judge_pass === null);
+      const size = row.size && row.size.label && row.size.label !== "?"
+        ? `<span class="bar-size">${esc(row.size.label)}</span>${archBadge(row.size)}` : "";
+      return `<button class="bar-row${unjudged ? " unjudged" : ""}" data-model="${esc(row.model)}"`
+        + ` style="${tierVars(row.tier)}"`
+        + ` title="${esc(row.model)} — ${pctLabel(value)}% on ${esc(MODULE_LABELS[currentModule] || currentModule)}`
+        + `${unjudged ? " (unjudged)" : ""}">`
+        + `<span class="bar-rank">${value === null ? "" : rank}</span>`
+        + `<span class="bar-name">${tierChip(row.tier)}${esc(row.model)}${size}</span>`
+        + `<span class="bar-track"><span class="bar-fill" style="width:${((value || 0) * 100).toFixed(2)}%"></span></span>`
+        + `<span class="bar-value">${pctLabel(value)}</span>`
+        + `</button>`;
+    }).join("");
+    document.getElementById("module-bars").innerHTML = `<div class="tier-rows">${body}</div>`;
+  }
+
+  modulePick.addEventListener("change", () => {
+    currentModule = modulePick.value;
+    renderModuleBars();
+    history.replaceState(null, "", `#by-module/${currentModule}`);
+  });
+
   /* ---------- the model detail modal, with its radar ---------- */
 
-  function radar(row) {
+  const COMPARE_MAX = 2;
+  let compareWith = [];
+  let modalRow = null;
+
+  function radar(series) {
+    const row = series[0].row;
     const W = 400, H = 346, cx = W / 2, cy = 172, R = 104;
     const n = modules.length;
     const pt = (i, r) => {
@@ -745,32 +865,100 @@
       const [x, y] = pt(i, 1);
       svg += `<line class="spoke" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`;
     });
-    const values = modules.map((m) => moduleValue(row, m));
-    const poly = modules.map((m, i) => {
-      const v = values[i] === null ? 0 : values[i];
-      return pt(i, v).map((c) => c.toFixed(1)).join(",");
+    // Drawn in reverse so the opened model's filled area sits under the
+    // compare outlines, and its vertices are not hidden by theirs.
+    const drawn = series.map((s) => ({ ...s, values: modules.map((m) => moduleValue(s.row, m)) }));
+    drawn.slice().reverse().forEach(({ row: r, cls, values }) => {
+      const poly = modules.map((m, i) => {
+        const v = values[i] === null ? 0 : values[i];
+        return pt(i, v).map((c) => c.toFixed(1)).join(",");
+      });
+      svg += `<polygon class="area ${cls}" points="${poly.join(" ")}"/>`;
     });
-    svg += `<polygon class="area" points="${poly.join(" ")}"/>`;
-    modules.forEach((m, i) => {
-      if (values[i] === null) return;
-      const [x, y] = pt(i, values[i]);
-      const weight = moduleWeights[m];
-      const note = JUDGE_SKIPPED.has(m) ? " · not sent to the judge" : "";
-      svg += `<circle class="vertex" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4">`
-        + `<title>${esc(MODULE_LABELS[m] || m)}: ${pctLabel(values[i])}%`
-        + `${weight !== undefined ? ` · ${(weight * 100).toFixed(0)}% of the headline` : ""}`
-        + `${note}</title></circle>`;
+    drawn.slice().reverse().forEach(({ row: r, cls, values }) => {
+      modules.forEach((m, i) => {
+        if (values[i] === null) return;
+        const [x, y] = pt(i, values[i]);
+        const weight = moduleWeights[m];
+        const note = JUDGE_SKIPPED.has(m) ? " · not sent to the judge" : "";
+        svg += `<circle class="vertex ${cls}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${cls ? 3.5 : 4}">`
+          + `<title>${series.length > 1 ? `${esc(r.model)} · ` : ""}`
+          + `${esc(MODULE_LABELS[m] || m)}: ${pctLabel(values[i])}%`
+          + `${weight !== undefined ? ` · ${(weight * 100).toFixed(0)}% of the headline` : ""}`
+          + `${note}</title></circle>`;
+      });
     });
+    // When comparing, three numbers per axis collide; the values move to the
+    // grid under the chart instead.
+    const values = drawn[0].values;
     modules.forEach((m, i) => {
       const [x, y] = pt(i, 1.24);
       const anchor = Math.abs(x - cx) < 12 ? "middle" : (x > cx ? "start" : "end");
       svg += `<text class="axis-name" x="${x.toFixed(1)}" y="${y.toFixed(1)}"`
         + ` text-anchor="${anchor}">${esc(MODULE_LABELS[m] || m)}</text>`;
-      svg += `<text class="axis-val" x="${x.toFixed(1)}" y="${(y + 12).toFixed(1)}"`
-        + ` text-anchor="${anchor}">${values[i] === null ? "—" : pctLabel(values[i])}</text>`;
+      if (series.length === 1) {
+        svg += `<text class="axis-val" x="${x.toFixed(1)}" y="${(y + 12).toFixed(1)}"`
+          + ` text-anchor="${anchor}">${values[i] === null ? "—" : pctLabel(values[i])}</text>`;
+      }
     });
     svg += "</svg>";
     return svg;
+  }
+
+  function compareOptions(row) {
+    const taken = new Set([row.model, ...compareWith]);
+    const pool = rows.filter((r) => !taken.has(r.model));
+    const bucket = row.size && row.size.bucket;
+    const sameTier = pool.filter((r) => r.tier === row.tier);
+    const sameSize = pool.filter((r) => r.tier !== row.tier && bucket && r.size && r.size.bucket === bucket);
+    const grouped = new Set([...sameTier, ...sameSize]);
+    const others = pool.filter((r) => !grouped.has(r));
+    const group = (label, members) => members.length
+      ? `<optgroup label="${esc(label)}">` + members.map((r) =>
+        `<option value="${esc(r.model)}">${esc(r.model)} · ${r.tier} · ${pctLabel(headlineOf(r))}</option>`).join("")
+        + `</optgroup>`
+      : "";
+    return group(`Same tier (${row.tier})`, sameTier) + group("Same size", sameSize) + group("Others", others);
+  }
+
+  function compareGrid(series) {
+    const cols = series.length;
+    let html = `<div class="compare-grid" style="grid-template-columns: minmax(4.5rem, auto) repeat(${cols}, minmax(0, 1fr))">`;
+    html += `<div class="ch"></div>` + series.map(({ row, cls }) =>
+      `<div class="ch" title="${esc(row.model)}"><span class="swatch ${cls || "base"}"></span><span class="n">${esc(row.model)}</span></div>`).join("");
+    const line = (label, values) => {
+      const best = Math.max(...values.filter((v) => v !== null));
+      return `<div class="rh">${label}</div>` + values.map((v) =>
+        `<div${v !== null && v === best ? ' class="best"' : ""}>${pctLabel(v)}</div>`).join("");
+    };
+    html += line("overall", series.map(({ row }) => headlineOf(row)));
+    modules.forEach((m) => {
+      html += line(esc(MODULE_LABELS[m] || m), series.map(({ row }) => moduleValue(row, m)));
+    });
+    return html + `</div>`;
+  }
+
+  function compareAreaHtml(row) {
+    const series = [{ row, cls: "" }].concat(
+      compareWith.map((name, i) => ({ row: byModel.get(name), cls: `cmp-${i + 1}` })));
+    let bar = `<div class="compare">`;
+    if (compareWith.length) {
+      bar += `<span class="compare-slot"><span class="swatch base"></span>`
+        + `<span class="name">${esc(row.model)}</span></span>`;
+    }
+    bar += series.slice(1).map(({ row: r, cls }, i) =>
+      `<span class="compare-slot" style="${tierVars(r.tier)}"><span class="swatch ${cls}"></span>`
+      + `${tierChip(r.tier)}<span class="name" title="${esc(r.model)}">${esc(r.model)}</span>`
+      + `<span class="val">${pctLabel(headlineOf(r))}</span>`
+      + `<button class="slot-remove" data-slot="${i}" aria-label="Stop comparing with ${esc(r.model)}">&times;</button>`
+      + `</span>`).join("");
+    if (compareWith.length < COMPARE_MAX && rows.length > compareWith.length + 1) {
+      bar += `<select id="compare-add" aria-label="Compare with another model">`
+        + `<option value="">+ Compare with…</option>${compareOptions(row)}</select>`;
+    }
+    bar += `</div>`;
+    return bar + `<div class="radar-wrap">${radar(series)}</div>`
+      + (compareWith.length ? compareGrid(series) : "");
   }
 
   function statBox(label, value) {
@@ -824,7 +1012,7 @@
       + `<div class="modal-headline">${tierChip(row.tier)}`
       + `<span class="big">${pctLabel(value)}</span>`
       + `<span class="unit">% judged pass^${data.headline_k}</span></div>`
-      + `<div class="radar-wrap">${radar(row)}</div>`
+      + `<div id="compare-area">${compareAreaHtml(row)}</div>`
       + `<div class="modal-stats">`
       + statBox("Tasks", row.n_tasks == null ? "—" : row.n_tasks)
       + statBox("Excluded", row.tasks_excluded || 0)
@@ -843,7 +1031,9 @@
   function openModal(name) {
     const row = byModel.get(name);
     if (!row) return;
-    lastFocus = document.activeElement;
+    if (backdrop.hidden) lastFocus = document.activeElement;
+    modalRow = row;
+    compareWith = [];
     modalEl.setAttribute("style", tierVars(row.tier));
     modalEl.innerHTML = modalHtml(row);
     backdrop.hidden = false;
@@ -854,23 +1044,47 @@
     if (backdrop.hidden) return;
     backdrop.hidden = true;
     modalEl.innerHTML = "";
+    modalRow = null;
+    compareWith = [];
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
+
+  function rerenderCompare() {
+    document.getElementById("compare-area").innerHTML = compareAreaHtml(modalRow);
+    const next = document.getElementById("compare-add")
+      || modalEl.querySelector(".slot-remove") || document.getElementById("modal-close");
+    next.focus();
+  }
+
+  modalEl.addEventListener("change", (event) => {
+    if (event.target.id !== "compare-add" || !event.target.value) return;
+    compareWith.push(event.target.value);
+    rerenderCompare();
+  });
+  modalEl.addEventListener("click", (event) => {
+    const remove = event.target.closest(".slot-remove");
+    if (!remove) return;
+    event.stopPropagation();
+    compareWith.splice(Number(remove.dataset.slot), 1);
+    rerenderCompare();
+  });
 
   backdrop.addEventListener("click", (event) => {
     if (event.target === backdrop || event.target.id === "modal-close") closeModal();
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeModal();
-    // Nothing in the dialog is focusable but the close button, so keeping Tab
-    // on it is the whole trap.
     if (event.key === "Tab" && !backdrop.hidden) {
+      const focusable = Array.from(modalEl.querySelectorAll("button, select"));
+      if (!focusable.length) return;
+      const i = focusable.indexOf(document.activeElement);
+      const step = event.shiftKey ? -1 : 1;
       event.preventDefault();
-      const close = document.getElementById("modal-close");
-      if (close) close.focus();
+      focusable[(i + step + focusable.length) % focusable.length].focus();
     }
   });
   document.addEventListener("click", (event) => {
+    if (event.target.closest(".modal")) return;
     const trigger = event.target.closest("[data-model]");
     if (trigger) openModal(trigger.dataset.model);
   });
@@ -892,7 +1106,8 @@
       if (on && btn.dataset.tab === "detailed") applyStickyOffsets();
       if (on && focus) btn.focus();
     });
-    if (location.hash.slice(1) !== name) history.replaceState(null, "", "#" + name);
+    const hash = name === "by-module" ? `by-module/${currentModule}` : name;
+    if (location.hash.slice(1) !== hash) history.replaceState(null, "", "#" + hash);
   }
   tabButtons.forEach((btn) => {
     btn.addEventListener("click", () => selectTab(btn.dataset.tab, false));
@@ -1100,9 +1315,11 @@
   renderBars();
   renderTierPanels();
   renderParamPanels();
+  const [initial, initialModule] = location.hash.slice(1).split("/");
+  if (initial === "by-module" && modules.includes(initialModule)) currentModule = initialModule;
+  renderModuleBars();
   render();
-  const initial = location.hash.slice(1);
-  selectTab(["leaderboard", "by-tier", "by-params", "detailed"].includes(initial)
+  selectTab(["leaderboard", "by-tier", "by-params", "by-module", "detailed"].includes(initial)
     ? initial : "leaderboard", false);
 })();
 </script>

@@ -278,20 +278,30 @@ def test_the_payload_carries_the_weight_values_not_just_the_preset_name(tmp_path
     assert abs(sum(data["module_weights"].values()) - 1.0) < 1e-9
 
 
-def test_the_html_ships_four_views_and_a_radar(tmp_path):
+def test_the_html_ships_five_views_and_a_radar(tmp_path):
     _write(tmp_path, _bench("m"), judged=False)
     html = render_leaderboard_html(build_leaderboard(tmp_path))
 
     for panel in ("panel-leaderboard", "panel-by-tier", "panel-by-params",
-                  "panel-detailed"):
+                  "panel-by-module", "panel-detailed"):
         assert f'id="{panel}"' in html
-    assert html.count('role="tab" ') == 4
-    assert html.count('role="tabpanel"') == 4
+    assert html.count('role="tab" ') == 5
+    assert html.count('role="tabpanel"') == 5
     assert "arch-badge" in html
     assert 'class="radar"' in html
     # The radar plots pass^k, not the det score: det sits between .80 and 1.00
     # for nearly every model and every radar comes out the same shape.
     assert "cell.judge_pass" in html and "cell.pass" in html
+
+
+def test_the_modal_compares_up_to_two_models_and_ranks_by_module(tmp_path):
+    _write(tmp_path, _bench("m"), judged=False)
+    html = render_leaderboard_html(build_leaderboard(tmp_path))
+
+    assert 'id="compare-add"' in html
+    assert "const COMPARE_MAX = 2;" in html
+    assert 'id="module-pick"' in html
+    assert '"tools") ? "tools"' in html
 
 
 # --- footprint buckets (v1.1) ------------------------------------------------

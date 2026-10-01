@@ -23,7 +23,7 @@ from .leaderboard import (build_leaderboard, load_model_registry,
                           render_leaderboard_html)
 from .models import BenchResult
 from .reporter import (judge_coverage, load_results, print_comparison,
-                       print_report, save_results)
+                       print_report, print_speed_comparison, save_results)
 from .migrate import migrate_file
 from .probe import JUDGE_DECIDES, run_probe
 from .rescore import rescore_bench
@@ -594,6 +594,10 @@ def compare(
     weights: str = typer.Option("balanced", help="Weight preset: "
                                 + "|".join(MODULE_WEIGHT_PRESETS)),
     scheme: str = typer.Option("module", help="Headline scheme: module|band|legacy."),
+    speed: bool = typer.Option(False, "--speed",
+                               help="Also show server-reported prefill/decode "
+                                    "tok/s per module, with the change over "
+                                    "the first file."),
 ) -> None:
     """Compare multiple saved results files side by side."""
     if len(files) < 2:
@@ -603,7 +607,10 @@ def compare(
     if scheme not in _HEADLINE_SCHEMES:
         raise typer.BadParameter(
             "scheme must be one of " + ", ".join(_HEADLINE_SCHEMES))
-    print_comparison([load_results(f) for f in files], weights_name=weights, scheme=scheme)
+    benches = [load_results(f) for f in files]
+    print_comparison(benches, weights_name=weights, scheme=scheme)
+    if speed:
+        print_speed_comparison(benches, [f.stem for f in files], weights_name=weights)
 
 
 def _models_in(files: list[Path]) -> list[str]:

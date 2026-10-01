@@ -196,3 +196,26 @@ def test_pre_change_results_file_still_loads(tmp_path):
     assert bench.results[0].prompt_tokens == 0
     assert bench.results[0].timing_source == ""
     assert aggregate_timings(bench.results)["code"]["prefill_tok_s"] is None
+
+
+def _bench(concurrency: int, **kw) -> BenchResult:
+    meta = {"model": "m", "endpoint": "e", "timestamp": "t",
+            "duration_seconds": 1.0, "bench_version": "1.0.2",
+            "concurrency": concurrency}
+    return BenchResult.model_validate({"meta": meta, "results": [_r(**kw).model_dump()]})
+
+
+def test_speed_comparison_shows_delta_and_concurrency_warning(capsys, monkeypatch):
+    from small_llm_bench import reporter
+    before = _bench(1, prompt_tokens=1000, prefill_seconds=1.0,
+                    completion_tokens=100, generation_seconds=4.0)
+    after = _bench(2, prompt_tokens=1000, prefill_seconds=0.8,
+                   cached_prompt_tokens=1000,
+                   completion_tokens=100, generation_seconds=2.0)
+    monkeypatch.setattr(reporter._console, "width", 200)
+    reporter.print_speed_comparison([before, after], ["before", "after"])
+    out = capsys.readouterr().out
+    assert "+25.0%" in out    # pp 1000 -> 1250
+    assert "+100.0%" in out   # tg 25 -> 50
+    assert "50%" in out       # half the after-run prompt came from cache
+    assert "different concurrency" in out

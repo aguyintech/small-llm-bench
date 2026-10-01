@@ -39,13 +39,18 @@ class TestRegistryFile:
             if active is not None:
                 assert active < entry["params_b"], name
 
-    def test_variants_point_at_a_model_that_exists(self):
+    @pytest.mark.parametrize("field", ["variant_of", "base_model"])
+    def test_parents_point_at_a_model_that_exists(self, field):
         entries = load_model_registry(_REPO_ROOT)
         for name, entry in entries.items():
-            parent = entry.get("variant_of")
+            parent = entry.get(field)
             if parent:
                 assert parent in entries, f"{name} -> unknown {parent}"
                 assert parent != name
+
+    def test_a_fine_tune_is_not_also_a_variant(self):
+        for name, entry in load_model_registry(_REPO_ROOT).items():
+            assert not (entry.get("base_model") and entry.get("variant_of")), name
 
     def test_a_missing_registry_is_not_an_error(self, tmp_path):
         # A user's checkout may not have one, and a model absent from it still

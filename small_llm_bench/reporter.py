@@ -419,6 +419,70 @@ def print_comparison(benches: list[BenchResult],
     _console.print(table)
 
 
+def _pct_delta(new: float | None, old: float | None) -> str:
+    """Relative change of ``new`` over ``old``, or a dash when either is missing."""
+    if not new or not old:
+        return "—"
+    return f"{(new - old) / old * 100:+.1f}%"
+
+
+def _cache_share(entry: dict | None) -> float | None:
+    """Fraction of prompt tokens served from the prefix cache."""
+    if not entry:
+        return None
+    total = entry["prompt_tokens"] + entry["cached_prompt_tokens"]
+    return entry["cached_prompt_tokens"] / total if total else None
+
+
+def print_speed_comparison(benches: list[BenchResult], labels: list[str],
+                           weights_name: str = "balanced") -> None:
+    """Print server-reported prefill (pp) and generation (tg) tok/s per module
+    across runs, each later run with its change over the first."""
+    timings = [aggregate_timings(b.results) for b in benches]
+    table = Table(title="server-reported tok/s (Δ vs first run)")
+    table.add_column("Module")
+    table.add_column("")
+    for i, label in enumerate(labels):
+        table.add_column(label, justify="right")
+        if i:
+            table.add_column("Δ", justify="right")
+
+    def add_rows(name: str, label: str, style: str | None = None) -> None:
+        for metric, key in (("pp", "prefill_tok_s"), ("tg", "gen_tok_s")):
+            first = (timings[0].get(name) or {}).get(key)
+            row = [label if metric == "pp" else "", metric]
+            for i, per_run in enumerate(timings):
+                value = (per_run.get(name) or {}).get(key)
+                row.append(_speed_cell(value))
+                if i:
+                    row.append(_pct_delta(value, first))
+            table.add_row(*row, style=style)
+
+    for name in MODULE_WEIGHT_PRESETS[weights_name]:
+        if any(name in t for t in timings):
+            add_rows(name, name)
+    table.add_section()
+    add_rows("__global__", "overall", style="bold")
+    cache_row = ["", "cached"]
+    for i, per_run in enumerate(timings):
+        share = _cache_share(per_run.get("__global__"))
+        cache_row.append(f"{share:.0%}" if share is not None else "—")
+        if i:
+            cache_row.append("")
+    table.add_row(*cache_row, style="dim")
+    _console.print(table)
+
+    concurrencies = {b.meta.concurrency for b in benches if b.meta.concurrency}
+    if len(concurrencies) > 1:
+        _console.print(f"[yellow]Runs used different concurrency "
+                       f"({', '.join(map(str, sorted(concurrencies)))}); decode "
+                       f"speed under a batching server depends on it.[/]")
+    task_sets = {b.meta.task_set_hash for b in benches if b.meta.task_set_hash}
+    if len(task_sets) > 1:
+        _console.print("[yellow]Runs scored different task sets; per-module "
+                       "rates cover different prompts.[/]")
+
+
 def aggregate_speed(results: list[TaskResult]) -> dict[str, float | None]:
     """Average generation speed (completion tokens / wall time) per module plus
     a "__global__" entry. Display-only; never feeds the score."""
@@ -457,6 +521,7 @@ def aggregate_timings(results: list[TaskResult]) -> dict[str, dict[str, float | 
             "prefill_tok_s": (ptok / psec) if psec > 0 else None,
             "gen_tok_s": (ctok / gsec) if gsec > 0 else None,
             "prefill_seconds": psec,
+            "prompt_tokens": ptok,
             "cached_prompt_tokens": cached,
         }
         for key, (ptok, psec, ctok, gsec, cached) in totals.items()
